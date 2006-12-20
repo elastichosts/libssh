@@ -1,0 +1,5 @@
+libssh (0.2~rc-1) unstable; urgency=low
+
+  * Initial release (Closes: #316872)
+
+ -- Jean-Philippe Garcia Ballester <giga@le-pec.org>  Wed, 20 Dec 2006 23:56:50 +0100
