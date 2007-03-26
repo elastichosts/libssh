@@ -1,3 +1,11 @@
+libssh (0.2+svn20070321-1) unstable; urgency=low
+
+  * New svn snapshot:
+    - Fix broken include in include/libssh/server.h (Closes: #410020)
+    - Fix nasty bug in server side code
+
+ -- Laurent Bigonville <bigon@bigon.be>  Mon, 26 Mar 2007 15:06:40 +0200
+
 libssh (0.2-1) unstable; urgency=low
 
   * New upstream release. 
