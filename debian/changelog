@@ -1,3 +1,9 @@
+libssh (0.2+svn20070321-3) unstable; urgency=low
+
+  * Fix wrong versionized Replaces for -doc package
+
+ -- Laurent Bigonville <bigon@bigon.be>  Thu,  5 Apr 2007 17:58:27 +0200
+
 libssh (0.2+svn20070321-2) unstable; urgency=low
 
   * Split devel package into devel and documentation packages 
