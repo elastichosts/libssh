@@ -1,3 +1,12 @@
+libssh (0.2+svn20070321-4) unstable; urgency=low
+
+  * debian/control:
+    - Add XS-Vcs-Svn and XS-Vcs-Browser fields.
+    - Change to ${binary:Version} for versionized dependencies.
+  * Add debian/README.Debian to disambiguate the package name 
+
+ -- Laurent Bigonville <bigon@bigon.be>  Fri, 27 Jul 2007 15:00:06 +0200
+
 libssh (0.2+svn20070321-3) unstable; urgency=low
 
   * Fix wrong versionized Replaces for -doc package
