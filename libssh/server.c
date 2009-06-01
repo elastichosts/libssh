@@ -27,10 +27,12 @@ MA 02111-1307, USA. */
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include "libssh/priv.h"
 #include "libssh/libssh.h"
 #include "libssh/server.h"
 #include "libssh/ssh2.h"
@@ -262,6 +264,7 @@ static int dh_handshake_server(SSH_SESSION *session){
 int ssh_accept(SSH_SESSION *session){
     ssh_send_banner(session,1);
     ssh_crypto_init();
+    session->alive=1;
     session->clientbanner=ssh_get_banner(session);
     server_set_kex(session);
     ssh_send_kex(session,1);
