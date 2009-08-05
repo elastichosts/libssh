@@ -2212,6 +2212,185 @@ int sftp_utimes(SFTP_SESSION *sftp, const char *file,
   return sftp_setstat(sftp, file, &attr);
 }
 
+int sftp_symlink(SFTP_SESSION *sftp, const char *target, const char *dest) {
+  STATUS_MESSAGE *status = NULL;
+  SFTP_MESSAGE *msg = NULL;
+  STRING *target_s;
+  STRING *dest_s;
+  BUFFER *buffer;
+  u32 id;
+
+  if (sftp == NULL || target == NULL || dest == NULL) {
+    return -1;
+  }
+
+  buffer = buffer_new();
+  if (buffer == NULL) {
+    return -1;
+  }
+
+  target_s = string_from_char(target);
+  if (target_s == NULL) {
+    buffer_free(buffer);
+    return -1;
+  }
+
+  dest_s = string_from_char(dest);
+  if (dest_s == NULL) {
+    string_free(target_s);
+    buffer_free(buffer);
+    return -1;
+  }
+
+  id = sftp_get_new_id(sftp);
+  if (buffer_add_u32(buffer, id) < 0) {
+    buffer_free(buffer);
+    string_free(dest_s);
+    string_free(target_s);
+    return -1;
+  }
+  if (ssh_get_openssh_version(sftp->session)) {
+    /* TODO check for version number if they ever fix it. */
+    if (buffer_add_ssh_string(buffer, target_s) < 0 ||
+      buffer_add_ssh_string(buffer, dest_s) < 0) {
+      buffer_free(buffer);
+      string_free(dest_s);
+      string_free(target_s);
+      return -1;
+    }
+  } else {
+    if (buffer_add_ssh_string(buffer, dest_s) < 0 ||
+      buffer_add_ssh_string(buffer, target_s) < 0) {
+      buffer_free(buffer);
+      string_free(dest_s);
+      string_free(target_s);
+      return -1;
+    }
+  }
+
+  if (sftp_packet_write(sftp, SSH_FXP_SYMLINK, buffer) < 0) {
+    buffer_free(buffer);
+    string_free(dest_s);
+    string_free(target_s);
+    return -1;
+  }
+  buffer_free(buffer);
+  string_free(dest_s);
+  string_free(target_s);
+
+  while (msg == NULL) {
+    if (sftp_read_and_dispatch(sftp) < 0) {
+      return -1;
+    }
+    msg = sftp_dequeue(sftp, id);
+  }
+
+  /* By specification, this command only returns SSH_FXP_STATUS */
+  if (msg->packet_type == SSH_FXP_STATUS) {
+    status = parse_status_msg(msg);
+    sftp_message_free(msg);
+    if (status == NULL) {
+      return -1;
+    }
+    sftp_set_error(sftp, status->status);
+    switch (status->status) {
+      case SSH_FX_OK:
+        status_msg_free(status);
+        return 0;
+      default:
+        break;
+    }
+    /*
+     * The status should be SSH_FX_OK if the command was successful, if it
+     * didn't, then there was an error
+     */
+    ssh_set_error(sftp->session, SSH_REQUEST_DENIED,
+        "SFTP server: %s", status->errormsg);
+    status_msg_free(status);
+    return -1;
+  } else {
+    ssh_set_error(sftp->session, SSH_FATAL,
+        "Received message %d when attempting to set stats", msg->packet_type);
+    sftp_message_free(msg);
+  }
+
+  return -1;
+}
+
+char *sftp_readlink(SFTP_SESSION *sftp, const char *path) {
+  STATUS_MESSAGE *status = NULL;
+  SFTP_MESSAGE *msg = NULL;
+  STRING *path_s = NULL;
+  STRING *link_s = NULL;
+  BUFFER *buffer;
+  char *link;
+  u32 ignored;
+  u32 id;
+
+  if (sftp == NULL || path == NULL) {
+    return NULL;
+  }
+
+  buffer = buffer_new();
+  if (buffer == NULL) {
+    return NULL;
+  }
+
+  path_s = string_from_char(path);
+  if (path_s == NULL) {
+    buffer_free(buffer);
+    return NULL;
+  }
+
+  id = sftp_get_new_id(sftp);
+  if (buffer_add_u32(buffer, id) < 0 ||
+      buffer_add_ssh_string(buffer, path_s) < 0 ||
+      sftp_packet_write(sftp, SSH_FXP_READLINK, buffer) < 0) {
+    buffer_free(buffer);
+    string_free(path_s);
+    return NULL;
+  }
+  buffer_free(buffer);
+  string_free(path_s);
+
+  while (msg == NULL) {
+    if (sftp_read_and_dispatch(sftp) < 0) {
+      return NULL;
+    }
+    msg = sftp_dequeue(sftp, id);
+  }
+
+  if (msg->packet_type == SSH_FXP_NAME) {
+    /* we don't care about "count" */
+    buffer_get_u32(msg->payload, &ignored);
+    /* we only care about the file name string */
+    link_s = buffer_get_ssh_string(msg->payload);
+    sftp_message_free(msg);
+    if (link_s == NULL) {
+      return NULL;
+    }
+    link = string_to_char(link_s);
+    string_free(link_s);
+
+    return link;
+  } else if (msg->packet_type == SSH_FXP_STATUS) { /* bad response (error) */
+    status = parse_status_msg(msg);
+    sftp_message_free(msg);
+    if (status == NULL) {
+      return NULL;
+    }
+    ssh_set_error(sftp->session, SSH_REQUEST_DENIED,
+        "SFTP server: %s", status->errormsg);
+    status_msg_free(status);
+  } else { /* this shouldn't happen */
+    ssh_set_error(sftp->session, SSH_FATAL,
+        "Received message %d when attempting to set stats", msg->packet_type);
+    sftp_message_free(msg);
+  }
+
+  return NULL;
+}
+
 /* another code written by Nick */
 char *sftp_canonicalize_path(SFTP_SESSION *sftp, const char *path) {
   STATUS_MESSAGE *status = NULL;

@@ -98,7 +98,10 @@ char *ssh_get_banner(SSH_SESSION *session) {
  * @see ssh_get_banner()
  */
 static int ssh_analyze_banner(SSH_SESSION *session, int *ssh1, int *ssh2) {
-  char *banner = session->serverbanner;
+  const char *banner = session->serverbanner;
+  const char *openssh;
+
+  ssh_log(session, SSH_LOG_RARE, "Analyzing banner: %s", banner);
 
   if (strncmp(banner, "SSH-", 4) != 0) {
     ssh_set_error(session, SSH_FATAL, "Protocol mismatch: %s", banner);
@@ -127,6 +130,17 @@ static int ssh_analyze_banner(SSH_SESSION *session, int *ssh1, int *ssh2) {
     default:
       ssh_set_error(session, SSH_FATAL, "Protocol mismatch: %s", banner);
       return -1;
+  }
+
+  openssh = strstr(banner, "OpenSSH");
+  if (openssh != NULL) {
+    int major, minor;
+    major = strtol(openssh + 8, (char **) NULL, 10);
+    minor = strtol(openssh + 10, (char **) NULL, 10);
+    session->openssh = SSH_VERSION_INT(major, minor, 0);
+    ssh_log(session, SSH_LOG_RARE,
+        "We are talking to an OpenSSH server version: %d.%d (%x)",
+        major, minor, session->openssh);
   }
 
   return 0;
@@ -477,15 +491,10 @@ int ssh_connect(SSH_SESSION *session) {
   session->alive = 0;
   session->client = 1;
 
-  if (ssh_crypto_init() < 0) {
+  if (ssh_init() < 0) {
     leave_function();
     return SSH_ERROR;
   }
-  if (ssh_socket_init() < 0) {
-    leave_function();
-    return SSH_ERROR;
-  }
-
   if (options->fd == -1 && options->host == NULL) {
     ssh_set_error(session, SSH_FATAL, "Hostname required");
     leave_function();
@@ -621,6 +630,24 @@ char *ssh_get_issue_banner(SSH_SESSION *session) {
 }
 
 /**
+ * @brief Get the version of the OpenSSH server, if it is not an OpenSSH server
+ * then 0 will be returned.
+ *
+ * You can use the SSH_VERSION_INT macro to compare version numbers.
+ *
+ * @param  session      The SSH session to use.
+ *
+ * @return The version number if available, 0 otherwise.
+ */
+int ssh_get_openssh_version(SSH_SESSION *session) {
+  if (session == NULL) {
+    return 0;
+  }
+
+  return session->openssh;
+}
+
+/**
  * @brief Disconnect from a session (client or server).
  *
  * @param session       The SSH session to disconnect.
@@ -628,12 +655,11 @@ char *ssh_get_issue_banner(SSH_SESSION *session) {
 void ssh_disconnect(SSH_SESSION *session) {
   STRING *str = NULL;
 
-  enter_function();
-
   if (session == NULL) {
-    leave_function();
     return;
   }
+
+  enter_function();
 
   if (ssh_socket_is_open(session->socket)) {
     if (buffer_add_u8(session->out_buffer, SSH2_MSG_DISCONNECT) < 0) {

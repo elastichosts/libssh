@@ -80,7 +80,6 @@ typedef struct channel_struct CHANNEL;
 typedef struct agent_struct AGENT;
 typedef struct ssh_session SSH_SESSION;
 typedef struct ssh_kbdint SSH_KBDINT;
-struct keys_struct;
 
 /* integer values */
 typedef uint32_t u32;
@@ -211,6 +210,7 @@ int ssh_connect(SSH_SESSION *session);
 void ssh_disconnect(SSH_SESSION *session);
 int ssh_service_request(SSH_SESSION *session, const char *service);
 char *ssh_get_issue_banner(SSH_SESSION *session);
+int ssh_get_openssh_version(SSH_SESSION *session);
 /* get copyright informations */
 const char *ssh_copyright(void);
 
@@ -257,9 +257,6 @@ PUBLIC_KEY *publickey_from_privatekey(PRIVATE_KEY *prv);
 void privatekey_free(PRIVATE_KEY *prv);
 STRING *publickey_from_file(SSH_SESSION *session, const char *filename,
     int *type);
-STRING *try_publickey_from_file(SSH_SESSION *session,
-    struct keys_struct keytab,
-    char **privkeyfile, int *type);
 int ssh_is_server_known(SSH_SESSION *session);
 int ssh_write_knownhost(SSH_SESSION *session);
 
@@ -370,14 +367,15 @@ int ssh_userauth_agent_pubkey(SSH_SESSION *session, const char *username,
 int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase);
 int ssh_userauth_kbdint(SSH_SESSION *session, const char *user, const char *submethods);
 int ssh_userauth_kbdint_getnprompts(SSH_SESSION *session);
-char *ssh_userauth_kbdint_getname(SSH_SESSION *session);
-char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session);
-char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i, char *echo);
+const char *ssh_userauth_kbdint_getname(SSH_SESSION *session);
+const char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session);
+const char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i, char *echo);
 int ssh_userauth_kbdint_setanswer(SSH_SESSION *session, unsigned int i,
     const char *answer);
 
 
 /* init.c */
+int ssh_init(void);
 int ssh_finalize(void);
 
 #ifdef __cplusplus

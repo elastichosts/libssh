@@ -367,7 +367,8 @@ void do_sftp(SSH_SESSION *session){
 
 static int auth_kbdint(SSH_SESSION *session){
     int err=ssh_userauth_kbdint(session,NULL,NULL);
-    char *name,*instruction,*prompt,*ptr;
+    const char *name, *instruction, *prompt;
+    char *ptr;
     char buffer[128];
     int i,n;
     char echo;
@@ -475,7 +476,6 @@ int main(int argc, char **argv){
             /* fallback to SSH_SERVER_NOT_KNOWN behaviour */
         case SSH_SERVER_NOT_KNOWN:
             hexa = ssh_get_hexa(hash, hlen);
-            free(hash);
             fprintf(stderr,"The server is unknown. Do you trust the host key ?\n");
             fprintf(stderr, "Public key hash: %s\n", hexa);
             free(hexa);
@@ -487,8 +487,11 @@ int main(int argc, char **argv){
             fprintf(stderr,"This new key will be written on disk for further usage. do you agree ?\n");
             fgets(buf,sizeof(buf),stdin);
             if(strncasecmp(buf,"yes",3)==0){
-                if(ssh_write_knownhost(session))
-                    fprintf(stderr,"error %s\n",ssh_get_error(session));
+                if (ssh_write_knownhost(session) < 0) {
+                  free(hash);
+                  fprintf(stderr, "error %s\n", strerror(errno));
+                  exit(-1);
+                }
             }
             
             break;
@@ -556,8 +559,10 @@ int main(int argc, char **argv){
         else
             batch_shell(session);
     }
+#ifdef WITH_SFTP
     else
-        do_sftp(session);    
+        do_sftp(session);
+#endif
     if(!sftp && !cmds[0])
         do_cleanup(0);
     ssh_disconnect(session);

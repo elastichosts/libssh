@@ -208,7 +208,7 @@ int ssh_userauth_none(SSH_SESSION *session, const char *username) {
 
   enter_function();
 
-#ifdef HAVE_SSH1
+#ifdef WITH_SSH1
   if (session->version == 1) {
     ssh_userauth1_none(session, username);
     leave_function();
@@ -314,7 +314,7 @@ int ssh_userauth_offer_pubkey(SSH_SESSION *session, const char *username,
 
   enter_function();
 
-#ifdef HAVE_SSH1
+#ifdef WITH_SSH1
   if (session->version == 1) {
     ssh_userauth1_offer_pubkey(session, username, type, publickey);
     leave_function();
@@ -671,7 +671,7 @@ int ssh_userauth_password(SSH_SESSION *session, const char *username,
 
   enter_function();
 
-#ifdef HAVE_SSH1
+#ifdef WITH_SSH1
   if (session->version == 1) {
     rc = ssh_userauth1_password(session, username, password);
     leave_function();
@@ -1417,7 +1417,7 @@ int ssh_userauth_kbdint_getnprompts(SSH_SESSION *session) {
  *
  * @returns             The name of the message block. Do not free it.
  */
-char *ssh_userauth_kbdint_getname(SSH_SESSION *session) {
+const char *ssh_userauth_kbdint_getname(SSH_SESSION *session) {
   return session->kbdint->name;
 }
 
@@ -1432,7 +1432,7 @@ char *ssh_userauth_kbdint_getname(SSH_SESSION *session) {
  * @returns             The instruction of the message block.
  */
 
-char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session) {
+const char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session) {
   return session->kbdint->instruction;
 }
 
@@ -1452,7 +1452,7 @@ char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session) {
  *
  * @returns             A pointer to the prompt. Do not free it.
  */
-char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i,
+const char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i,
     char *echo) {
   if (i > session->kbdint->nprompts) {
     return NULL;
@@ -1475,7 +1475,7 @@ char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i,
  */
 int ssh_userauth_kbdint_setanswer(SSH_SESSION *session, unsigned int i,
     const char *answer) {
-  if (i > session->kbdint->nprompts) {
+  if (session == NULL || answer == NULL || i > session->kbdint->nprompts) {
     return -1;
   }
 
