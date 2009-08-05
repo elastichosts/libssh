@@ -1,6 +1,7 @@
 libssh (0.3.4-1) UNRELEASED; urgency=low
 
-  * New upstream release
+  * New upstream release.
+    - Adjust build-deps and use cmake
   * debian/control:
     - Use my debian.org address in Uploaders and takeover the package
       with Jean-Philippe permission
