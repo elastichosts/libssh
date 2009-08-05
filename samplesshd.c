@@ -25,8 +25,13 @@ MA 02111-1307, USA. */
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#define KEYS_FOLDER
+#else
+#define KEYS_FOLDER "/etc/ssh/"
+#endif
 
-int auth_password(char *user, char *password){
+static int auth_password(char *user, char *password){
     if(strcmp(user,"aris"))
         return 0;
     if(strcmp(password,"lala"))
@@ -40,12 +45,13 @@ int main(int argc, char **argv){
     SSH_BIND *ssh_bind;
     SSH_MESSAGE *message;
     CHANNEL *chan=0;
+    BUFFER *buf;
     int auth=0;
     int sftp=0;
     int i;
     ssh_options_getopt(options,&argc,argv);
-    ssh_options_set_dsa_server_key(options,"/etc/ssh/ssh_host_dsa_key");
-    ssh_options_set_rsa_server_key(options,"/etc/ssh/ssh_host_rsa_key");
+    ssh_options_set_dsa_server_key(options, KEYS_FOLDER "ssh_host_dsa_key");
+    ssh_options_set_rsa_server_key(options, KEYS_FOLDER "ssh_host_rsa_key");
     ssh_bind=ssh_bind_new();
     ssh_bind_set_options(ssh_bind,options);
     if(ssh_bind_listen(ssh_bind)<0){
@@ -57,9 +63,9 @@ int main(int argc, char **argv){
       printf("error accepting a connection : %s\n",ssh_get_error(ssh_bind));
       return 1;
     }
-    printf("Socket connecté : %d\n",ssh_get_fd(session));
+    printf("Socket connected: fd = %d\n", ssh_get_fd(session));
     if(ssh_accept(session)){
-        printf("ssh_accept : %s\n",ssh_get_error(session));
+        printf("ssh_accept: %s\n",ssh_get_error(session));
         return 1;
     }
     do {
@@ -93,7 +99,7 @@ int main(int argc, char **argv){
         ssh_message_free(message);
     } while (!auth);
     if(!auth){
-        printf("error : %s\n",ssh_get_error(session));
+        printf("auth error: %s\n",ssh_get_error(session));
 	ssh_finalize();
         return 1;
     }
@@ -114,7 +120,7 @@ int main(int argc, char **argv){
     } while(message && !chan);
     if(!chan){
         printf("error : %s\n",ssh_get_error(session));
-	ssh_finalize();
+        ssh_finalize();
         return 1;
     }
     do {
@@ -137,13 +143,15 @@ int main(int argc, char **argv){
         return 1;
     }
     printf("it works !\n");
-    BUFFER *buf=buffer_new();
+    buf=buffer_new();
     do{
-        i=channel_read(chan,buf,0,0);
+        i=channel_read_buffer(chan,buf,0,0);
         if(i>0)
             write(1,buffer_get(buf),buffer_get_len(buf));
     } while (i>0);
+    buffer_free(buf);
     ssh_disconnect(session);
+    ssh_bind_free(ssh_bind);
     ssh_finalize();
     return 0;
 }
