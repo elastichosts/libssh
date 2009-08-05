@@ -1,27 +1,33 @@
 /*
-Copyright 2003,04 Aris Adamantiadis
+ * This file is part of the SSH Library
+ *
+ * Copyright (c) 2003-2008 by Aris Adamantiadis
+ *
+ * The SSH Library is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or (at your
+ * option) any later version.
+ *
+ * The SSH Library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the SSH Library; see the file COPYING.  If not, write to
+ * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
+ * MA 02111-1307, USA.
+ *
+ * vim: ts=2 sw=2 et cindent
+ */
 
-This file is part of the SSH Library
-
-The SSH Library is free software; you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as published by
-the Free Software Foundation; either version 2.1 of the License, or (at your
-option) any later version.
-
-The SSH Library is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-License for more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with the SSH Library; see the file COPYING.  If not, write to
-the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-MA 02111-1307, USA. */
-
-/* priv.h file */
-/* This include file contains everything you shouldn't deal with in user programs. */
-/* Consider that anything in this file might change without notice; libssh.h file will keep */
-/* backward compatibility on binary & source */
+/*
+ * priv.h file
+ * This include file contains everything you shouldn't deal with in
+ * user programs. Consider that anything in this file might change
+ * without notice; libssh.h file will keep backward compatibility
+ * on binary & source
+ */
 
 #ifndef _LIBSSH_PRIV_H
 #define _LIBSSH_PRIV_H
@@ -37,8 +43,8 @@ MA 02111-1307, USA. */
 /* some constants */
 #define MAX_PACKET_LEN 262144
 #define ERROR_BUFFERLEN 1024
-#define CLIENTBANNER1 "SSH-1.5-" LIBSSH_VERSION
-#define CLIENTBANNER2 "SSH-2.0-" LIBSSH_VERSION
+#define CLIENTBANNER1 "SSH-1.5-libssh-" SSH_STRINGIFY(LIBSSH_VERSION)
+#define CLIENTBANNER2 "SSH-2.0-libssh-" SSH_STRINGIFY(LIBSSH_VERSION)
 #define KBDINT_MAX_PROMPT 256 /* more than openssh's :) */
 /* some types for public keys */
 #define TYPE_DSS 1
@@ -154,9 +160,9 @@ struct string_struct {
  */
 struct buffer_struct {
     char *data;
-    int used;
-    int allocated;
-    int pos;
+    u32 used;
+    u32 allocated;
+    u32 pos;
 };
 
 /* i should remove it one day */
@@ -173,7 +179,7 @@ typedef struct kex_struct {
 
 struct public_key_struct {
     int type;
-    char *type_c; /* Don't free it ! it is static */
+    const char *type_c; /* Don't free it ! it is static */
 #ifdef HAVE_LIBGCRYPT
     gcry_sexp_t dsa_pub;
     gcry_sexp_t rsa_pub;
@@ -205,7 +211,15 @@ typedef struct signature_struct {
 #endif
 } SIGNATURE;
 
+
+struct error_struct {
+/* error handling */
+    int error_code;
+    char error_buffer[ERROR_BUFFERLEN];
+};
+
 struct ssh_options_struct {
+    struct error_struct error;
     char *banner; /* explicit banner to send */
     char *username;
     char *host;
@@ -214,13 +228,14 @@ struct ssh_options_struct {
     char *identity;
     char *ssh_dir;
     char *known_hosts_file;
-    int fd; /* specificaly wanted file descriptor, don't connect host */
+    socket_t fd; /* specificaly wanted file descriptor, don't connect host */
     int port;
     int dont_verify_hostkey; /* Don't spare time, don't check host key ! unneeded to say it's dangerous and not safe */
     int use_nonexisting_algo; /* if user sets a not supported algorithm for kex, don't complain */
     char *wanted_methods[10]; /* the kex methods can be choosed. better use the kex fonctions to do that */
     void *wanted_cookie; /* wants a specific cookie to be sent ? if null, generate a new one */
-    void *passphrase_function; /* this functions will be called if a keyphrase is needed. look keyfiles.c for more info */
+    ssh_auth_callback auth_function; /* this functions will be called if e.g. a keyphrase is needed. */
+    void *auth_userdata;
     void (*connect_status_function)(void *arg, float status); /* status callback function */
     void *connect_status_arg; /* arbitrary argument */
     long timeout; /* seconds */
@@ -229,12 +244,14 @@ struct ssh_options_struct {
     int ssh1allowed;
     char *dsakey;
     char *rsakey; /* host key for server implementation */
+    int log_verbosity;
+    void (*log_function)(const char *message, SSH_SESSION *session, int verbosity); //log callback
 };
 
 typedef struct ssh_crypto_struct {
     bignum e,f,x,k,y;
     unsigned char session_id[SHA_DIGEST_LEN];
-    
+
     unsigned char encryptIV[SHA_DIGEST_LEN*2];
     unsigned char decryptIV[SHA_DIGEST_LEN*2];
 
@@ -246,7 +263,7 @@ typedef struct ssh_crypto_struct {
     unsigned char hmacbuf[EVP_MAX_MD_SIZE];
     struct crypto_struct *in_cipher, *out_cipher; /* the cipher structures/objects */
     STRING *server_pubkey;
-    char *server_pubkey_type;
+    const char *server_pubkey_type;
     int do_compress_out; /* idem */
     int do_compress_in; /* don't set them, set the option instead */
     void *compress_out_ctx; /* don't touch it */
@@ -273,19 +290,23 @@ struct channel_struct {
     void *userarg;
     int version;
     int blocking;
+    int exit_status;
 };
 
-
-struct error_struct {
-/* error handling */
-    int error_code;
-    char error_buffer[ERROR_BUFFERLEN];
+struct agent_struct {
+  struct socket *sock;
+  BUFFER *ident;
+  unsigned int count;
 };
 
+struct keys_struct {
+  const char *private;
+  const char *public;
+};
 
 struct ssh_session {
     struct error_struct error;
-    int fd;
+    struct socket *socket;
     SSH_OPTIONS *options;
     char *serverbanner;
     char *clientbanner;
@@ -297,39 +318,32 @@ struct ssh_session {
 /* status flags */
     int closed;
     int closed_by_except;
-    
-    int connected; 
+
+    int connected;
     /* !=0 when the user got a session handle */
     int alive;
     /* two previous are deprecated */
     int auth_service_asked;
-    
+
 /* socket status */
-    int data_to_read; /* reading now on socket will 
-                         not block */
-    int data_to_write;
-    int data_except;
     int blocking; // functions should block
-    
-    STRING *banner; /* that's the issue banner from 
+
+    STRING *banner; /* that's the issue banner from
                        the server */
     char *remotebanner; /* that's the SSH- banner from
                            remote host. */
-    char *discon_msg; /* disconnect message from 
+    char *discon_msg; /* disconnect message from
                          the remote host */
     BUFFER *in_buffer;
     PACKET in_packet;
     BUFFER *out_buffer;
-    
-    BUFFER *out_socket_buffer;
-    BUFFER *in_socket_buffer;
-    
+
     /* the states are used by the nonblocking stuff to remember */
     /* where it was before being interrupted */
     int packet_state;
     int dh_handshake_state;
     STRING *dh_server_signature; //information used by dh_handshake.
-    
+
     KEX server_kex;
     KEX client_kex;
     BUFFER *in_hashbuf;
@@ -337,13 +351,11 @@ struct ssh_session {
     CRYPTO *current_crypto;
     CRYPTO *next_crypto;  /* next_crypto is going to be used after a SSH2_MSG_NEWKEYS */
 
-    int channel_bytes_toread; /* left number of bytes 
-                                 in the channel buffers
-                                 */
     CHANNEL *channels; /* linked list of channels */
     int maxchannel;
-    int exec_channel_opened; /* version 1 only. more 
+    int exec_channel_opened; /* version 1 only. more
                                 info in channels1.c */
+    AGENT *agent; /* ssh agent */
 
 /* keyb interactive data */
     struct ssh_kbdint *kbdint;
@@ -352,9 +364,11 @@ struct ssh_session {
     PRIVATE_KEY *rsa_key;
     PRIVATE_KEY *dsa_key;
     /* auths accepted by server */
-    int auth_methods; 
+    int auth_methods;
     int hostkeys; /* contains type of host key wanted by client, in server impl */
     struct ssh_message *ssh_message; /* ssh message */
+    int log_verbosity; /*cached copy of the option structure */
+    int log_indent; /* indentation level in enter_function logs */
 };
 
 struct ssh_kbdint {
@@ -370,7 +384,7 @@ struct ssh_kbdint {
 
 struct ssh_bind_struct {
     struct error_struct error;
-    int bindfd;
+    socket_t bindfd;
     SSH_OPTIONS *options;
     int blocking;
     int toaccept;
@@ -404,7 +418,7 @@ struct ssh_channel_request {
     u32 pxwidth;
     u32 pxheight;
     STRING *modes;
-    
+
     /* env type request */
     char *var_name;
     char *var_value;
@@ -422,6 +436,75 @@ struct ssh_message {
     struct ssh_channel_request channel_request;
 };
 
+#ifndef _WIN32
+/* agent.c */
+/**
+ * @brief Create a new ssh agent structure.
+ *
+ * @return An allocated ssh agent structure or NULL on error.
+ */
+struct agent_struct *agent_new(struct ssh_session *session);
+
+void agent_close(struct agent_struct *agent);
+
+/**
+ * @brief Free an allocated ssh agent structure.
+ *
+ * @param agent The ssh agent structure to free.
+ */
+void agent_free(struct agent_struct *agent);
+
+/**
+ * @brief Check if the ssh agent is running.
+ *
+ * @param session The ssh session to check for the agent.
+ *
+ * @return 1 if it is running, 0 if not.
+ */
+int agent_is_running(struct ssh_session *session);
+
+int agent_get_ident_count(struct ssh_session *session);
+
+struct public_key_struct *agent_get_next_ident(struct ssh_session *session,
+    char **comment);
+
+struct public_key_struct *agent_get_first_ident(struct ssh_session *session,
+    char **comment);
+
+STRING *agent_sign_data(struct ssh_session *session,
+    struct buffer_struct *data,
+    struct public_key_struct *pubkey);
+#endif
+
+/* socket.c */
+
+struct socket;
+int ssh_socket_init(void);
+struct socket *ssh_socket_new(SSH_SESSION *session);
+void ssh_socket_free(struct socket *s);
+void ssh_socket_set_fd(struct socket *s, socket_t fd);
+socket_t ssh_socket_get_fd(struct socket *s);
+#ifndef _WIN32
+int ssh_socket_unix(struct socket *s, const char *path);
+#endif
+void ssh_socket_close(struct socket *s);
+int ssh_socket_read(struct socket *s, void *buffer, int len);
+int ssh_socket_write(struct socket *s,const void *buffer, int len);
+int ssh_socket_is_open(struct socket *s);
+int ssh_socket_fd_isset(struct socket *s, fd_set *set);
+void ssh_socket_fd_set(struct socket *s, fd_set *set, int *fd_max);
+int ssh_socket_completeread(struct socket *s, void *buffer, u32 len);
+int ssh_socket_completewrite(struct socket *s, const void *buffer, u32 len);
+int ssh_socket_wait_for_data(struct socket *s, SSH_SESSION *session, u32 len);
+int ssh_socket_nonblocking_flush(struct socket *s);
+int ssh_socket_blocking_flush(struct socket *s);
+int ssh_socket_poll(struct socket *s, int *writeable, int *except);
+void ssh_socket_set_towrite(struct socket *s);
+void ssh_socket_set_toread(struct socket *s);
+void ssh_socket_set_except(struct socket *s);
+int ssh_socket_get_status(struct socket *s);
+int ssh_socket_data_available(struct socket *s);
+int ssh_socket_data_writable(struct socket *s);
 /* session.c */
 
 void ssh_cleanup(SSH_SESSION *session);
@@ -432,27 +515,30 @@ int ssh_send_banner(SSH_SESSION *session, int is_server);
 char *ssh_get_banner(SSH_SESSION *session);
 
 /* errors.c */
-void ssh_set_error(void *error,int code,char *descr,...);
+void ssh_set_error(void *error, int code, const char *descr, ...) PRINTF_ATTRIBUTE(3, 4);
 
 /* in dh.c */
 /* DH key generation */
-void dh_generate_e(SSH_SESSION *session);
-void ssh_print_bignum(char *which,bignum num);
-void dh_generate_x(SSH_SESSION *session);
-void dh_generate_y(SSH_SESSION *session);
-void dh_generate_f(SSH_SESSION *session);
+void ssh_print_bignum(const char *which,bignum num);
+int dh_generate_e(SSH_SESSION *session);
+int dh_generate_f(SSH_SESSION *session);
+int dh_generate_x(SSH_SESSION *session);
+int dh_generate_y(SSH_SESSION *session);
+
+int ssh_crypto_init(void);
+void ssh_crypto_finalize(void);
 
 STRING *dh_get_e(SSH_SESSION *session);
 STRING *dh_get_f(SSH_SESSION *session);
-void dh_import_f(SSH_SESSION *session,STRING *f_string);
-void dh_import_e(SSH_SESSION *session, STRING *e_string);
+int dh_import_f(SSH_SESSION *session,STRING *f_string);
+int dh_import_e(SSH_SESSION *session, STRING *e_string);
 void dh_import_pubkey(SSH_SESSION *session,STRING *pubkey_string);
-void dh_build_k(SSH_SESSION *session);
-void make_sessionid(SSH_SESSION *session);
+int dh_build_k(SSH_SESSION *session);
+int make_sessionid(SSH_SESSION *session);
 /* add data for the final cookie */
-void hashbufin_add_cookie(SSH_SESSION *session,unsigned char *cookie);
-void hashbufout_add_cookie(SSH_SESSION *session);
-void generate_session_keys(SSH_SESSION *session);
+int hashbufin_add_cookie(SSH_SESSION *session, unsigned char *cookie);
+int hashbufout_add_cookie(SSH_SESSION *session);
+int generate_session_keys(SSH_SESSION *session);
 /* returns 1 if server signature ok, 0 otherwise. The NEXT crypto is checked, not the current one */
 int signature_verify(SSH_SESSION *session,STRING *signature);
 bignum make_string_bn(STRING *string);
@@ -466,7 +552,7 @@ unsigned char *packet_encrypt(SSH_SESSION *session,void *packet,unsigned int len
 int packet_hmac_verify(SSH_SESSION *session,BUFFER *buffer,unsigned char *mac);
 
 /* in packet.c */
-void packet_clear_out(SSH_SESSION *session);
+
 void packet_parse(SSH_SESSION *session);
 int packet_send(SSH_SESSION *session);
 
@@ -476,83 +562,92 @@ int packet_wait(SSH_SESSION *session,int type,int blocking);
 int packet_flush(SSH_SESSION *session, int enforce_blocking);
 /* connect.c */
 SSH_SESSION *ssh_session_new();
-int ssh_connect_host(SSH_SESSION *session, const char *host,const char 
+socket_t ssh_connect_host(SSH_SESSION *session, const char *host,const char
         *bind_addr, int port, long timeout, long usec);
 
 /* in kex.c */
-extern char *ssh_kex_nums[];
-void ssh_send_kex(SSH_SESSION *session,int server_kex);
-void ssh_list_kex(KEX *kex);
+extern const char *ssh_kex_nums[];
+int ssh_send_kex(SSH_SESSION *session, int server_kex);
+void ssh_list_kex(SSH_SESSION *session, KEX *kex);
 int set_kex(SSH_SESSION *session);
 int ssh_get_kex(SSH_SESSION *session, int server_kex);
-int verify_existing_algo(int algo,char *name);
-char **space_tokenize(char *chain);
+int verify_existing_algo(int algo, const char *name);
+char **space_tokenize(const char *chain);
 int ssh_get_kex1(SSH_SESSION *session);
-char *ssh_find_matching(char *in_d, char *what_d);
+char *ssh_find_matching(const char *in_d, const char *what_d);
 
 /* in keyfiles.c */
 
-PRIVATE_KEY  *_privatekey_from_file(void *session,char *filename,int type);
+PRIVATE_KEY *_privatekey_from_file(void *session, const char *filename,
+    int type);
 
 /* in keys.c */
-char *ssh_type_to_char(int type);
-PUBLIC_KEY *publickey_make_dss(BUFFER *buffer);
-PUBLIC_KEY *publickey_make_rsa(BUFFER *buffer,char *type);
-PUBLIC_KEY *publickey_from_string(STRING *pubkey_s);
-SIGNATURE *signature_from_string(STRING *signature,PUBLIC_KEY *pubkey,int needed_type);
+const char *ssh_type_to_char(int type);
+int ssh_type_from_name(const char *name);
+
+PRIVATE_KEY *privatekey_make_dss(SSH_SESSION *session, BUFFER *buffer);
+PRIVATE_KEY *privatekey_make_rsa(SSH_SESSION *session, BUFFER *buffer,
+    const char *type);
+PRIVATE_KEY *privatekey_from_string(SSH_SESSION *session, STRING *privkey_s);
+
+PUBLIC_KEY *publickey_make_dss(SSH_SESSION *session, BUFFER *buffer);
+PUBLIC_KEY *publickey_make_rsa(SSH_SESSION *session, BUFFER *buffer, int type);
+PUBLIC_KEY *publickey_from_string(SSH_SESSION *session, STRING *pubkey_s);
+SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,PUBLIC_KEY *pubkey,int needed_type);
 void signature_free(SIGNATURE *sign);
-STRING *ssh_do_sign(SSH_SESSION *session,BUFFER *sigbuf, 
+STRING *ssh_do_sign_with_agent(struct ssh_session *session,
+    struct buffer_struct *buf, struct public_key_struct *publickey);
+STRING *ssh_do_sign(SSH_SESSION *session,BUFFER *sigbuf,
         PRIVATE_KEY *privatekey);
 STRING *ssh_sign_session_id(SSH_SESSION *session, PRIVATE_KEY *privatekey);
 STRING *ssh_encrypt_rsa1(SSH_SESSION *session, STRING *data, PUBLIC_KEY *key);
 /* channel.c */
 void channel_handle(SSH_SESSION *session, int type);
 CHANNEL *channel_new(SSH_SESSION *session);
-void channel_default_bufferize(CHANNEL *channel, void *data, int len,
+int channel_default_bufferize(CHANNEL *channel, void *data, int len,
         int is_stderr);
 u32 ssh_channel_new_id(SSH_SESSION *session);
-CHANNEL *ssh_channel_from_local(SSH_SESSION *session,u32 num);
+CHANNEL *ssh_channel_from_local(SSH_SESSION *session, u32 id);
 
 /* options.c */
 
-void ssh_options_free(SSH_OPTIONS *opt);
 /* this function must be called when no specific username has been asked. it has to guess it */
 int ssh_options_default_username(SSH_OPTIONS *opt);
 int ssh_options_default_ssh_dir(SSH_OPTIONS *opt);
 int ssh_options_default_known_hosts_file(SSH_OPTIONS *opt);
 
 /* buffer.c */
-void buffer_add_ssh_string(BUFFER *buffer,STRING *string);
-void buffer_add_u8(BUFFER *buffer, u8 data);
-void buffer_add_u32(BUFFER *buffer, u32 data);
-void buffer_add_u64(BUFFER *buffer,u64 data);
-void buffer_add_data(BUFFER *buffer, void *data, int len);
-void buffer_add_data_begin(BUFFER *buffer,void *data,int len);
-void buffer_add_buffer(BUFFER *buffer, BUFFER *source);
-void buffer_reinit(BUFFER *buffer);
+int buffer_add_ssh_string(BUFFER *buffer, STRING *string);
+int buffer_add_u8(BUFFER *buffer, u8 data);
+int buffer_add_u32(BUFFER *buffer, u32 data);
+int buffer_add_u64(BUFFER *buffer, u64 data);
+int buffer_add_data(BUFFER *buffer, const void *data, u32 len);
+int buffer_prepend_data(BUFFER *buffer, const void *data, u32 len);
+int buffer_add_buffer(BUFFER *buffer, BUFFER *source);
+int buffer_reinit(BUFFER *buffer);
 
 /* buffer_get_rest returns a pointer to the current position into the buffer */
 void *buffer_get_rest(BUFFER *buffer);
 /* buffer_get_rest_len returns the number of bytes which can be read */
-int buffer_get_rest_len(BUFFER *buffer);
+u32 buffer_get_rest_len(BUFFER *buffer);
 
 /* buffer_read_*() returns the number of bytes read, except for ssh strings */
-int buffer_get_u8(BUFFER *buffer,u8 *data);
-int buffer_get_u32(BUFFER *buffer,u32 *data);
+int buffer_get_u8(BUFFER *buffer, u8 *data);
+int buffer_get_u32(BUFFER *buffer, u32 *data);
 int buffer_get_u64(BUFFER *buffer, u64 *data);
 
-int buffer_get_data(BUFFER *buffer,void *data,int requestedlen);
+u32 buffer_get_data(BUFFER *buffer, void *data, u32 requestedlen);
 /* buffer_get_ssh_string() is an exception. if the String read is too large or invalid, it will answer NULL. */
 STRING *buffer_get_ssh_string(BUFFER *buffer);
 /* gets a string out of a SSH-1 mpint */
 STRING *buffer_get_mpint(BUFFER *buffer);
 /* buffer_pass_bytes acts as if len bytes have been read (used for padding) */
-int buffer_pass_bytes_end(BUFFER *buffer,int len);
-int buffer_pass_bytes(BUFFER *buffer, int len);
+u32 buffer_pass_bytes_end(BUFFER *buffer, u32 len);
+u32 buffer_pass_bytes(BUFFER *buffer, u32 len);
 
 /* in base64.c */
-BUFFER *base64_to_bin(char *source);
-unsigned char *bin_to_base64(unsigned char *source, int len);
+BUFFER *base64_to_bin(const char *source);
+unsigned char *bin_to_base64(const unsigned char *source, int len);
 
 /* gzip.c */
 int compress_buffer(SSH_SESSION *session,BUFFER *buf);
@@ -561,22 +656,22 @@ int decompress_buffer(SSH_SESSION *session,BUFFER *buf);
 /* wrapper.c */
 int crypt_set_algorithms(SSH_SESSION *);
 int crypt_set_algorithms_server(SSH_SESSION *session);
-CRYPTO *crypto_new();
+CRYPTO *crypto_new(void);
 void crypto_free(CRYPTO *crypto);
 
 /* crc32.c */
-u32 ssh_crc32(char *buffer, int len);
+u32 ssh_crc32(const char *buf, u32 len);
 
 /* auth1.c */
-int ssh_userauth1_none(SSH_SESSION *session, char *username);
-int ssh_userauth1_offer_pubkey(SSH_SESSION *session, char *username,
+int ssh_userauth1_none(SSH_SESSION *session, const char *username);
+int ssh_userauth1_offer_pubkey(SSH_SESSION *session, const char *username,
         int type, STRING *pubkey);
-int ssh_userauth1_password(SSH_SESSION *session, char *username, 
-        char *password);
+int ssh_userauth1_password(SSH_SESSION *session, const char *username,
+        const char *password);
 /* in misc.c */
 /* gets the user home dir. */
-char *ssh_get_user_home_dir();
-int ssh_file_readaccess_ok(char *file);
+char *ssh_get_user_home_dir(void);
+int ssh_file_readaccess_ok(const char *file);
 
 /* macro for byte ordering */
 u64 ntohll(u64);
@@ -584,17 +679,56 @@ u64 ntohll(u64);
 
 /* channels1.c */
 int channel_open_session1(CHANNEL *channel);
-int channel_request_pty_size1(CHANNEL *channel, char *terminal,int cols, 
-        int rows);
+int channel_request_pty_size1(CHANNEL *channel, const char *terminal,
+    int cols, int rows);
 int channel_change_pty_size1(CHANNEL *channel, int cols, int rows);
 int channel_request_shell1(CHANNEL *channel);
-int channel_request_exec1(CHANNEL *channel, char *cmd);
-void channel_handle1(SSH_SESSION *session,int type);
-int channel_write1(CHANNEL *channel, void *data, int len);
+int channel_request_exec1(CHANNEL *channel, const char *cmd);
+int channel_handle1(SSH_SESSION *session, int type);
+int channel_write1(CHANNEL *channel, const void *data, int len);
 
 /* session.c */
 
 int ssh_handle_packets(SSH_SESSION *session);
+
+/* match.c */
+int match_hostname(const char *host, const char *pattern, unsigned int len);
+
+/* log.c */
+
+#define _enter_function(sess) \
+	do {\
+		if((sess)->log_verbosity >= SSH_LOG_FUNCTIONS){ \
+			ssh_log((sess),SSH_LOG_FUNCTIONS,"entering function %s line %d in " __FILE__ , __FUNCTION__,__LINE__);\
+			(sess)->log_indent++; \
+		} \
+	} while(0)
+
+#define _leave_function(sess) \
+	do { \
+		if((sess)->log_verbosity >= SSH_LOG_FUNCTIONS){ \
+			(sess)->log_indent--; \
+			ssh_log((sess),SSH_LOG_FUNCTIONS,"leaving function %s line %d in " __FILE__ , __FUNCTION__,__LINE__);\
+		}\
+	} while(0)
+
+#define enter_function() _enter_function(session)
+#define leave_function() _leave_function(session)
+
+/** Free memory space */
+#define SAFE_FREE(x) do { if ((x) != NULL) {free(x); x=NULL;} } while(0)
+
+/** Zero a structure */
+#define ZERO_STRUCT(x) memset((char *)&(x), 0, sizeof(x))
+
+/** Zero a structure given a pointer to the structure */
+#define ZERO_STRUCTP(x) do { if ((x) != NULL) memset((char *)(x), 0, sizeof(*(x))); } while(0)
+
+/** Get the size of an array */
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
+
+/** Overwrite the complete string with 'X' */
+#define BURN_STRING(x) do { if ((x) != NULL) memset((x), 'X', strlen((x))); } while(0)
 
 #ifdef HAVE_LIBGCRYPT
 /* gcrypt_missing.c */
@@ -603,7 +737,7 @@ char *my_gcry_bn2dec(bignum bn);
 #endif /* !HAVE_LIBGCRYPT */
 
 #ifdef __cplusplus
-} ;
+}
 #endif
 
 #endif /* _LIBSSH_PRIV_H */
