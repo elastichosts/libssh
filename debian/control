@@ -8,7 +8,7 @@ Vcs-Git: git://git.debian.org/collab-maint/libssh.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/libssh.git
 Homepage: http://www.libssh.org/
 
-Package: libssh-2
+Package: libssh-3
 Section: libs
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
@@ -19,13 +19,11 @@ Description: A tiny C SSH library
  transfer files, use a secure and transparent tunnel for your remote programs.
  With its SFTP implementation, you can play with remote files easily.
 
-Package: libssh-2-dev
-Provides: libssh-dev
+Package: libssh-dev
 Section: libdevel
 Architecture: any
-Depends: libssh-2 (= ${binary:Version}), ${misc:Depends}, libgcrypt11-dev, zlib1g-dev
-Suggests: libssh-2-doc
-Conflicts: libssh-dev
+Depends: libssh-3 (= ${binary:Version}), ${misc:Depends}, libssl-dev, zlib1g-dev
+Suggests: libssh-doc
 Description: A tiny C SSH library. Development files
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
@@ -35,11 +33,11 @@ Description: A tiny C SSH library. Development files
  .
  This package contains development files.
 
-Package: libssh-2-dbg
+Package: libssh-dbg
 Priority: extra
 Section: debug
 Architecture: any
-Depends: libssh-2 (= ${binary:Version}), ${misc:Depends}
+Depends: libssh-3 (= ${binary:Version}), ${misc:Depends}
 Description: A tiny C SSH library. Debug symbols
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
@@ -49,17 +47,16 @@ Description: A tiny C SSH library. Debug symbols
  .
  This package contains debug symbols.
 
-Package: libssh-2-doc
-Section: doc
-Architecture: all
-Suggests: doc-base
-Depends: ${misc:Depends}
-Replaces: libssh-2-dev (<< 0.2+svn20070321-2)
-Description: A tiny C SSH library. Documentation files
- The ssh library was designed to be used by programmers needing a working SSH
- implementation by the mean of a library. The complete control of the client
- is made by the programmer. With libssh, you can remotely execute programs,
- transfer files, use a secure and transparent tunnel for your remote programs.
- With its SFTP implementation, you can play with remote files easily.
- .
- This package contains documentation files.
+#Package: libssh-doc
+#Section: doc
+#Architecture: all
+#Suggests: doc-base
+#Depends: ${misc:Depends}
+#Description: A tiny C SSH library. Documentation files
+# The ssh library was designed to be used by programmers needing a working SSH
+# implementation by the mean of a library. The complete control of the client
+# is made by the programmer. With libssh, you can remotely execute programs,
+# transfer files, use a secure and transparent tunnel for your remote programs.
+# With its SFTP implementation, you can play with remote files easily.
+# .
+# This package contains documentation files.

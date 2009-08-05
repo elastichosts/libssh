@@ -2,6 +2,7 @@ libssh (0.3.4-1) UNRELEASED; urgency=low
 
   * New upstream release.
     - Adjust build-deps and use cmake
+    - Bump soname and adjust .symbols file
   * debian/control:
     - Use my debian.org address in Uploaders and takeover the package
       with Jean-Philippe permission
@@ -13,7 +14,7 @@ libssh (0.3.4-1) UNRELEASED; urgency=low
   * debian/libssh-2-doc.doc-base: Fix doc-base-uses-applications-section
   * Bump debhelper version to 7
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 19:07:51 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 19:20:32 +0200
 
 libssh (0.2+svn20070321-4) unstable; urgency=low
 
