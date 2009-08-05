@@ -19,8 +19,6 @@
  * along with the SSH Library; see the file COPYING.  If not, write to
  * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
  * MA 02111-1307, USA.
- *
- * vim: ts=2 sw=2 et cindent
  */
 
 /**
@@ -167,8 +165,12 @@ void ssh_bind_set_blocking(SSH_BIND *ssh_bind, int blocking) {
   ssh_bind->blocking = blocking ? 1 : 0;
 }
 
-int ssh_bind_get_fd(SSH_BIND *ssh_bind) {
+socket_t ssh_bind_get_fd(SSH_BIND *ssh_bind) {
   return ssh_bind->bindfd;
+}
+
+void ssh_bind_set_fd(SSH_BIND *ssh_bind, socket_t fd) {
+  ssh_bind->bindfd = fd;
 }
 
 void ssh_bind_fd_toaccept(SSH_BIND *ssh_bind) {
@@ -514,3 +516,4 @@ int ssh_accept(SSH_SESSION *session) {
 
 /** @}
  */
+/* vim: set ts=2 sw=2 et cindent: */

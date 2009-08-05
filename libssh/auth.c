@@ -20,8 +20,6 @@
  * along with the SSH Library; see the file COPYING.  If not, write to
  * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
  * MA 02111-1307, USA.
- *
- * vim: ts=2 sw=2 et cindent
  */
 
 #include "libssh/priv.h"
@@ -749,20 +747,20 @@ error:
 
 static struct keys_struct keytab[] = {
   {
-    .private = "%s/.ssh/identity",
-    .public = "%s/.ssh/identity.pub"
+    .privatekey = "%s/.ssh/identity",
+    .publickey = "%s/.ssh/identity.pub"
   },
   {
-    .private = "%s/.ssh/id_dsa",
-    .public = "%s/.ssh/id_dsa.pub",
+    .privatekey = "%s/.ssh/id_dsa",
+    .publickey = "%s/.ssh/id_dsa.pub",
   },
   {
-    .private = "%s/.ssh/id_rsa",
-    .public = "%s/.ssh/id_rsa.pub",
+    .privatekey = "%s/.ssh/id_rsa",
+    .publickey = "%s/.ssh/id_rsa.pub",
   },
   {
-    .private = NULL,
-    .public = NULL
+    .privatekey = NULL,
+    .publickey = NULL
   }
 };
 
@@ -890,8 +888,8 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
     }
     sprintf(id, "%s.pub", session->options->identity);
 
-    keytab[size - 1].private = session->options->identity;
-    keytab[size - 1].public = id;
+    keytab[size - 1].privatekey = session->options->identity;
+    keytab[size - 1].publickey = id;
   }
 
   for (i = 0, pubkey = try_publickey_from_file(session, keytab[i],
@@ -906,8 +904,8 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
     rc = ssh_userauth_offer_pubkey(session, NULL, type, pubkey);
     if (rc == SSH_AUTH_ERROR){
       if (id != NULL) {
-        keytab[size - 1].private = NULL;
-        keytab[size - 1].public  = NULL;
+        keytab[size - 1].privatekey = NULL;
+        keytab[size - 1].publickey  = NULL;
         SAFE_FREE(id);
       }
       string_free(pubkey);
@@ -941,8 +939,8 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
     rc = ssh_userauth_pubkey(session, NULL, pubkey, privkey);
     if (rc == SSH_AUTH_ERROR) {
       if (id != NULL) {
-        keytab[size - 1].private = NULL;
-        keytab[size - 1].public  = NULL;
+        keytab[size - 1].privatekey = NULL;
+        keytab[size - 1].publickey  = NULL;
         SAFE_FREE(id);
       }
       string_free(pubkey);
@@ -970,8 +968,8 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
     privatekey_free(privkey);
     SAFE_FREE(privkeyfile);
     if (id != NULL) {
-      keytab[size - 1].private = NULL;
-      keytab[size - 1].public  = NULL;
+      keytab[size - 1].privatekey = NULL;
+      keytab[size - 1].publickey  = NULL;
       SAFE_FREE(id);
     }
 
@@ -983,8 +981,8 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
       "Tried every public key, none matched");
   ssh_set_error(session,SSH_NO_ERROR,"No public key matched");
   if (id) {
-    keytab[size - 1].private = NULL;
-    keytab[size - 1].public  = NULL;
+    keytab[size - 1].privatekey = NULL;
+    keytab[size - 1].publickey  = NULL;
     SAFE_FREE(id);
   }
 
@@ -1498,4 +1496,4 @@ int ssh_userauth_kbdint_setanswer(SSH_SESSION *session, unsigned int i,
 }
 
 /** @} */
-
+/* vim: set ts=2 sw=2 et cindent: */

@@ -20,8 +20,6 @@
  * along with the SSH Library; see the file COPYING.  If not, write to
  * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
  * MA 02111-1307, USA.
- *
- * vim: ts=2 sw=2 et cindent
  */
 
 #include <stdio.h>
@@ -938,11 +936,11 @@ STRING *try_publickey_from_file(SSH_SESSION *session, struct keys_struct keytab,
     }
   }
 
-  pub = keytab.public;
+  pub = keytab.publickey;
   if (pub == NULL) {
     return NULL;
   }
-  priv = keytab.private;
+  priv = keytab.privatekey;
   if (priv == NULL) {
     return NULL;
   }
@@ -1578,4 +1576,4 @@ int ssh_write_knownhost(SSH_SESSION *session) {
 }
 
 /** @} */
-
+/* vim: set ts=2 sw=2 et cindent: */

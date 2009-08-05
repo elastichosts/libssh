@@ -19,8 +19,6 @@
  * along with the SSH Library; see the file COPYING.  If not, write to
  * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
  * MA 02111-1307, USA.
- *
- * vim: ts=2 sw=2 et cindent
  */
 
 /** \defgroup ssh_messages SSH Messages
@@ -663,10 +661,6 @@ SSH_MESSAGE *ssh_message_get(SSH_SESSION *session) {
 
   enter_function();
 
-  if (msg == NULL) {
-    goto error;
-  }
-
   do {
     if ((packet_read(session) != SSH_OK) ||
         (packet_translate(session) != SSH_OK)) {
@@ -784,8 +778,10 @@ void ssh_message_free(SSH_MESSAGE *msg){
       SAFE_FREE(msg->channel_request.subsystem);
       break;
   }
-  memset(msg, 0, sizeof(*msg));
-  SAFE_FREE(msg);
+  ZERO_STRUCTP(msg);
 }
-/** @}
+
+/**
+ * @}
  */
+/* vim: set ts=2 sw=2 et cindent: */
