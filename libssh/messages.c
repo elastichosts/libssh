@@ -34,6 +34,11 @@
 
 #include <string.h>
 #include <stdlib.h>
+
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
+
 #include "libssh/libssh.h"
 #include "libssh/priv.h"
 #include "libssh/server.h"
@@ -778,7 +783,9 @@ void ssh_message_free(SSH_MESSAGE *msg){
       SAFE_FREE(msg->channel_request.subsystem);
       break;
   }
+
   ZERO_STRUCTP(msg);
+  SAFE_FREE(msg);
 }
 
 /**

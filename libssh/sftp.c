@@ -31,6 +31,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
+
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
 #include "libssh/sftp.h"
@@ -1677,6 +1681,7 @@ ssize_t sftp_write(SFTP_FILE *file, const void *buf, size_t count) {
   BUFFER *buffer;
   u32 id;
   int len;
+  int packetlen;
 
   buffer = buffer_new();
   if (buffer == NULL) {
@@ -1700,12 +1705,12 @@ ssize_t sftp_write(SFTP_FILE *file, const void *buf, size_t count) {
     return -1;
   }
   string_free(datastring);
-
   len = sftp_packet_write(file->sftp, SSH_FXP_WRITE, buffer);
+  packetlen=buffer_get_len(buffer);
   buffer_free(buffer);
   if (len < 0) {
     return -1;
-  } else  if ((u32) len != buffer_get_len(buffer)) {
+  } else  if (len != packetlen) {
     ssh_log(sftp->session, SSH_LOG_PACKET,
         "Could not write as much data as expected");
   }

@@ -27,6 +27,10 @@
 #include <string.h>
 #include <errno.h>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
+
 #include "config.h"
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
@@ -534,7 +538,7 @@ static int packet_send1(SSH_SESSION *session) {
       "%d bytes after comp + %d padding bytes = %d bytes packet",
       currentlen, padding, ntohl(finallen));
 
-  if (buffer_prepend_data(session->out_buffer,i &padstring, padding) < 0) {
+  if (buffer_prepend_data(session->out_buffer, &padstring, padding) < 0) {
     goto error;
   }
   if (buffer_prepend_data(session->out_buffer, &finallen, sizeof(u32)) < 0) {
@@ -607,7 +611,7 @@ void packet_parse(SSH_SESSION *session) {
       case SSH_SMSG_STDOUT_DATA:
       case SSH_SMSG_STDERR_DATA:
       case SSH_SMSG_EXITSTATUS:
-        channel_handle1(session,type)
+        channel_handle1(session,type);
         return;
       case SSH_MSG_DEBUG:
       case SSH_MSG_IGNORE:

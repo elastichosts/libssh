@@ -28,6 +28,10 @@
 #include <stdio.h>
 #include <errno.h>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
+
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
 
@@ -311,7 +315,7 @@ static void channel_rcv_change_window(SSH_SESSION *session) {
 
   channel = channel_from_msg(session);
   if (channel == NULL) {
-    ssh_log(session, SSH_LOG_FUNCTIONS, ssh_get_error(session));
+    ssh_log(session, SSH_LOG_FUNCTIONS, "%s", ssh_get_error(session));
   }
 
   rc = buffer_get_u32(session->in_buffer, &bytes);
@@ -409,7 +413,7 @@ static void channel_rcv_eof(SSH_SESSION *session) {
 
   channel = channel_from_msg(session);
   if (channel == NULL) {
-    ssh_log(session, SSH_LOG_FUNCTIONS, ssh_get_error(session));
+    ssh_log(session, SSH_LOG_FUNCTIONS, "%s", ssh_get_error(session));
     leave_function();
     return;
   }
@@ -431,7 +435,7 @@ static void channel_rcv_close(SSH_SESSION *session) {
 
   channel = channel_from_msg(session);
   if (channel == NULL) {
-    ssh_log(session, SSH_LOG_FUNCTIONS, ssh_get_error(session));
+    ssh_log(session, SSH_LOG_FUNCTIONS, "%s", ssh_get_error(session));
     leave_function();
     return;
   }
@@ -473,7 +477,7 @@ static void channel_rcv_request(SSH_SESSION *session) {
 
   channel = channel_from_msg(session);
   if (channel == NULL) {
-    ssh_log(session, SSH_LOG_FUNCTIONS, ssh_get_error(session));
+    ssh_log(session, SSH_LOG_FUNCTIONS,"%s", ssh_get_error(session));
     leave_function();
     return;
   }
@@ -900,7 +904,10 @@ int channel_write(CHANNEL *channel, const void *data, u32 len) {
       /* What happens when the channel window is zero? */
       while(channel->remote_window == 0) {
         /* parse every incoming packet */
-        packet_wait(channel->session, 0, 0);
+        if (packet_wait(channel->session, 0, 0) == SSH_ERROR) {
+          leave_function();
+          return SSH_ERROR;
+        }
       }
       effectivelen = len > channel->remote_window ? channel->remote_window : len;
     } else {

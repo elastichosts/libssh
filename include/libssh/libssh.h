@@ -51,7 +51,7 @@ typedef unsigned long long uint64_t;
 /* libssh version */
 #define LIBSSH_VERSION_MAJOR  0
 #define LIBSSH_VERSION_MINOR  3
-#define LIBSSH_VERSION_MICRO  0
+#define LIBSSH_VERSION_MICRO  1
 
 #define LIBSSH_VERSION_INT SSH_VERSION_INT(LIBSSH_VERSION_MAJOR, \
                                            LIBSSH_VERSION_MINOR, \
@@ -134,6 +134,7 @@ typedef int socket_t;
 #define SSH_SERVER_KNOWN_OK 1
 #define SSH_SERVER_KNOWN_CHANGED 2
 #define SSH_SERVER_FOUND_OTHER 3
+#define SSH_SERVER_FILE_NOT_FOUND 4
 
 #ifndef MD5_DIGEST_LEN
     #define MD5_DIGEST_LEN 16

@@ -29,6 +29,11 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <ctype.h>
+
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
+
 #include "libssh/priv.h"
 
 #ifdef HAVE_LIBGCRYPT
@@ -1275,9 +1280,9 @@ static int match_hashed_host(SSH_SESSION *session, const char *host,
     leave_function();
     return 0;
   }
-  SAFE_FREE(source);
 
   hash = base64_to_bin(b64hash);
+  SAFE_FREE(source);
   if (hash == NULL) {
     buffer_free(salt);
     leave_function();
@@ -1337,6 +1342,9 @@ static int match_hashed_host(SSH_SESSION *session, const char *host,
  *                                   possible attack \n
  *         SSH_SERVER_NOT_KNOWN:     The server is unknown. User should confirm
  *                                   the MD5 is correct\n
+ *         SSH_SERVER_FILE_NOT_FOUND:The known host file does not exist. The
+ *                                   host is thus unknown. File will be created
+ *                                   if host key is accepted\n
  *         SSH_SERVER_ERROR:         Some error happened
  *
  * \see ssh_options_set_wanted_algo()
@@ -1356,10 +1364,10 @@ int ssh_is_server_known(SSH_SESSION *session) {
   enter_function();
 
   if (ssh_options_default_known_hosts_file(session->options) < 0) {
-    ssh_set_error(session, SSH_FATAL,
+    ssh_set_error(session, SSH_REQUEST_DENIED,
         "Can't find a known_hosts file");
     leave_function();
-    return SSH_SERVER_ERROR;
+    return SSH_SERVER_FILE_NOT_FOUND;
   }
 
   if (session->options->host == NULL) {
@@ -1413,6 +1421,8 @@ int ssh_is_server_known(SSH_SESSION *session) {
         /* We override the status with the wrong key state */
         ret = SSH_SERVER_KNOWN_CHANGED;
       }
+    } else {
+      tokens_free(tokens);
     }
   } while (1);
 
@@ -1427,7 +1437,7 @@ int ssh_is_server_known(SSH_SESSION *session) {
 }
 
 /** You generaly use it when ssh_is_server_known() answered SSH_SERVER_NOT_KNOWN
- * \brief write the current server as known in the known hosts file
+ * \brief write the current server as known in the known hosts file. This will create the known hosts file if it does not exist.
  * \param session ssh session
  * \return 0 on success, -1 on error
  */
