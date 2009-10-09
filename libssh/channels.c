@@ -280,7 +280,7 @@ static int grow_window(SSH_SESSION *session, CHANNEL *channel, int minimumsize) 
   leave_function();
   return 0;
 error:
-  buffer_free(session->out_buffer);
+  buffer_reinit(session->out_buffer);
 
   leave_function();
   return -1;
@@ -791,7 +791,7 @@ int channel_send_eof(CHANNEL *channel){
   leave_function();
   return rc;
 error:
-  buffer_free(session->out_buffer);
+  buffer_reinit(session->out_buffer);
 
   leave_function();
   return rc;
@@ -844,7 +844,7 @@ int channel_close(CHANNEL *channel){
   leave_function();
   return rc;
 error:
-  buffer_free(session->out_buffer);
+  buffer_reinit(session->out_buffer);
 
   leave_function();
   return rc;
@@ -938,7 +938,7 @@ int channel_write(CHANNEL *channel, const void *data, u32 len) {
   leave_function();
   return origlen;
 error:
-  buffer_free(session->out_buffer);
+  buffer_reinit(session->out_buffer);
 
   leave_function();
   return SSH_ERROR;
@@ -1060,7 +1060,7 @@ static int channel_request(CHANNEL *channel, const char *request,
   leave_function();
   return rc;
 error:
-  buffer_free(session->out_buffer);
+  buffer_reinit(session->out_buffer);
   string_free(req);
 
   leave_function();
@@ -1618,6 +1618,9 @@ int channel_poll(CHANNEL *channel, int is_stderr){
     }
   }
 
+  if (buffer_get_rest_len(stdbuf) > 0)
+    return buffer_get_rest_len(stdbuf);
+
   if (channel->remote_eof) {
     leave_function();
     return SSH_EOF;
@@ -1658,7 +1661,9 @@ int channel_get_exit_status(CHANNEL *channel) {
       return -1;
     }
     if (channel->open == 0) {
-      return -1;
+      /* When a channel is closed, no exit status message can
+       * come anymore */
+      break;
     }
   }
 
