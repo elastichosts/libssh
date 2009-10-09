@@ -1,5 +1,6 @@
-libssh (0.2+svn20070321-5) UNRELEASED; urgency=low
+libssh (0.3.4-1) UNRELEASED; urgency=low
 
+  * New upstream release
   * debian/control:
     - Use my debian.org address in Uploaders and takeover the package
       with Jean-Philippe permission
@@ -11,7 +12,7 @@ libssh (0.2+svn20070321-5) UNRELEASED; urgency=low
   * debian/libssh-2-doc.doc-base: Fix doc-base-uses-applications-section
   * Bump debhelper version to 7
 
- -- Laurent Bigonville <bigon@debian.org>  Mon, 01 Jun 2009 19:52:09 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 19:07:25 +0200
 
 libssh (0.2+svn20070321-4) unstable; urgency=low
 
