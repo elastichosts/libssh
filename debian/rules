@@ -11,7 +11,7 @@ include /usr/share/cdbs/1/class/cmake.mk
 include /usr/share/cdbs/1/rules/debhelper.mk
 #include /usr/share/cdbs/1/rules/simple-patchsys.mk
 
-DEB_DBG_PACKAGE_libssh-3 = libssh-3-dbg
+DEB_DBG_PACKAGE_libssh-3 = libssh-dbg
 
 common-build-indep::
 	cd obj-*/; make doc
