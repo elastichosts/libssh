@@ -11,14 +11,16 @@ libssh (0.3.4-1) UNRELEASED; urgency=low
     - Bump Standards-Version to 3.8.3 (no further changes)
     - Use debug section for -dbg package
     - Add ${misc:Depends} to please lintian
+    - Remove duplicate section to please lintian
   * debian/libssh-2-doc.doc-base: Fix doc-base-uses-applications-section
   * Bump debhelper version to 7
   * debian/libssh-dev.install: do not install .la file and static
     library anymore
   * debian/libssh-3.lintian-overrides: Update override
   * debian/copyright: Update copyright file
+  * debian/libssh-3.symbols: Add initial symbols file
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 20:26:04 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 20:31:00 +0200
 
 libssh (0.2+svn20070321-4) unstable; urgency=low
 
