@@ -5,5 +5,5 @@ Abstract: This manual describes libssh API.
 Section: Programming/C
 
 Format: HTML
-Index: /usr/share/doc/libssh-2-doc/html/index.html
-Files: /usr/share/doc/libssh-2-doc/html/*
+Index: /usr/share/doc/libssh-doc/html/index.html
+Files: /usr/share/doc/libssh-doc/html/*
