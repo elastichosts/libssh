@@ -901,7 +901,7 @@ int crypt_set_algorithms_server(SSH_SESSION *session){
     /* out */
     server = session->server_kex.methods[SSH_CRYPT_S_C];
     client = session->client_kex.methods[SSH_CRYPT_S_C];
-    match = ssh_find_matching(client,server);
+    match = ssh_find_matching(client, server);
 
     if(!match){
         ssh_set_error(session,SSH_FATAL,"Crypt_set_algorithms_server : no matching algorithm function found for %s",server);
@@ -963,8 +963,8 @@ int crypt_set_algorithms_server(SSH_SESSION *session){
         ssh_log(session,SSH_LOG_PACKET,"enabling C->S compression");
         session->next_crypto->do_compress_in=1;
     }
-    free(match);
-    
+    SAFE_FREE(match);
+
     client=session->client_kex.methods[SSH_CRYPT_S_C];
     server=session->server_kex.methods[SSH_CRYPT_S_C];
     match=ssh_find_matching(client,server);
@@ -972,22 +972,23 @@ int crypt_set_algorithms_server(SSH_SESSION *session){
         ssh_log(session,SSH_LOG_PACKET,"enabling S->C compression\n");
         session->next_crypto->do_compress_out=1;
     }
-    free(match);
-    
+    SAFE_FREE(match);
+
     server=session->server_kex.methods[SSH_HOSTKEYS];
     client=session->client_kex.methods[SSH_HOSTKEYS];
     match=ssh_find_matching(client,server);
-    if(!strcmp(match,"ssh-dss"))
+    if(match && !strcmp(match,"ssh-dss"))
         session->hostkeys=TYPE_DSS;
-    else if(!strcmp(match,"ssh-rsa"))
+    else if(match && !strcmp(match,"ssh-rsa"))
         session->hostkeys=TYPE_RSA;
     else {
-        ssh_set_error(session,SSH_FATAL,"cannot know what %s is into %s",match,server);
-        free(match);
+        ssh_set_error(session, SSH_FATAL, "Cannot know what %s is into %s",
+            match ? match : NULL, server);
+        SAFE_FREE(match);
         leave_function();
         return SSH_ERROR;
     }
-    free(match);
+    SAFE_FREE(match);
     leave_function();
     return SSH_OK;
 }
