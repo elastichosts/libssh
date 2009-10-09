@@ -1,6 +1,6 @@
 libssh (0.3.4-1) UNRELEASED; urgency=low
 
-  * New upstream release.
+  * New upstream release (Closes: #467284).
     - Adjust build-deps and use cmake
     - Bump soname and adjust .symbols file
   * debian/control:
@@ -20,7 +20,7 @@ libssh (0.3.4-1) UNRELEASED; urgency=low
   * debian/copyright: Update copyright file
   * debian/libssh-3.symbols: Add initial symbols file
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 20:31:00 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 21:12:39 +0200
 
 libssh (0.2+svn20070321-4) unstable; urgency=low
 
