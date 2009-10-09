@@ -13,8 +13,9 @@ libssh (0.3.4-1) UNRELEASED; urgency=low
     - Add ${misc:Depends} to please lintian
   * debian/libssh-2-doc.doc-base: Fix doc-base-uses-applications-section
   * Bump debhelper version to 7
+  * debian/libssh-dev.install: do not install .la file anymore
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 19:20:32 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 09 Oct 2009 19:23:52 +0200
 
 libssh (0.2+svn20070321-4) unstable; urgency=low
 
