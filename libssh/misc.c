@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 #include "config.h"
@@ -35,6 +36,7 @@
 #define _WIN32_IE 0x0400 //SHGetSpecialFolderPath
 #include <shlobj.h>
 #include <winsock2.h>
+#include <direct.h>
 #else
 #include <pwd.h>
 #include <arpa/inet.h>
@@ -147,6 +149,138 @@ const char *ssh_version(int req_version) {
   }
 
   return NULL;
+}
+
+/**
+ * @brief Parse directory component.
+ *
+ * dirname breaks a null-terminated pathname string into a directory component.
+ * In the usual case, ssh_dirname() returns the string up to, but not including,
+ * the final '/'. Trailing '/' characters are  not  counted as part of the
+ * pathname. The caller must free the memory.
+ *
+ * @param path  The path to parse.
+ *
+ * @return  The dirname of path or NULL if we can't allocate memory. If path
+ *          does not contain a slash, c_dirname() returns the string ".".  If
+ *          path is the string "/", it returns the string "/". If path is
+ *          NULL or an empty string, "." is returned.
+ */
+char *ssh_dirname (const char *path) {
+  char *new = NULL;
+  unsigned int len;
+
+  if (path == NULL || *path == '\0') {
+    return strdup(".");
+  }
+
+  len = strlen(path);
+
+  /* Remove trailing slashes */
+  while(len > 0 && path[len - 1] == '/') --len;
+
+  /* We have only slashes */
+  if (len == 0) {
+    return strdup("/");
+  }
+
+  /* goto next slash */
+  while(len > 0 && path[len - 1] != '/') --len;
+
+  if (len == 0) {
+    return strdup(".");
+  } else if (len == 1) {
+    return strdup("/");
+  }
+
+  /* Remove slashes again */
+  while(len > 0 && path[len - 1] == '/') --len;
+
+  new = malloc(len + 1);
+  if (new == NULL) {
+    return NULL;
+  }
+
+  strncpy(new, path, len);
+  new[len] = '\0';
+
+  return new;
+}
+
+/**
+ * @brief basename - parse filename component.
+ *
+ * basename breaks a null-terminated pathname string into a filename component.
+ * ssh_basename() returns the component following the final '/'.  Trailing '/'
+ * characters are not counted as part of the pathname.
+ *
+ * @param path The path to parse.
+ *
+ * @return  The filename of path or NULL if we can't allocate memory. If path
+ *          is a the string "/", basename returns the string "/". If path is
+ *          NULL or an empty string, "." is returned.
+ */
+char *ssh_basename (const char *path) {
+  char *new = NULL;
+  const char *s;
+  unsigned int len;
+
+  if (path == NULL || *path == '\0') {
+    return strdup(".");
+  }
+
+  len = strlen(path);
+  /* Remove trailing slashes */
+  while(len > 0 && path[len - 1] == '/') --len;
+
+  /* We have only slashes */
+  if (len == 0) {
+    return strdup("/");
+  }
+
+  while(len > 0 && path[len - 1] != '/') --len;
+
+  if (len > 0) {
+    s = path + len;
+    len = strlen(s);
+
+    while(len > 0 && s[len - 1] == '/') --len;
+  } else {
+    return strdup(path);
+  }
+
+  new = malloc(len + 1);
+  if (new == NULL) {
+    return NULL;
+  }
+
+  strncpy(new, s, len);
+  new[len] = '\0';
+
+  return new;
+}
+
+/**
+ * @brief Attempts to create a directory with the given pathname.
+ *
+ * This is the portable version of mkdir, mode is ignored on Windows systems.
+ *
+ * @param  pathname     The path name to create the directory.
+ *
+ * @param  mode         The permissions to use.
+ *
+ * @return 0 on success, < 0 on error with errno set.
+ */
+int ssh_mkdir(const char *pathname, mode_t mode) {
+  int r;
+
+#ifdef _WIN32
+  r = _mkdir(pathname);
+#else
+  r = mkdir(pathname, mode);
+#endif
+
+  return r;
 }
 
 /** @} */
