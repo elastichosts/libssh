@@ -23,6 +23,8 @@ Section: libdevel
 Architecture: any
 Depends: libssh-3 (= ${binary:Version}), ${misc:Depends}, libssl-dev, zlib1g-dev
 Suggests: libssh-doc
+Conflicts: libssh-2-dev
+Replaces: libssh-2-dev
 Description: A tiny C SSH library. Development files
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
@@ -51,6 +53,8 @@ Section: doc
 Architecture: all
 Suggests: doc-base
 Depends: ${misc:Depends}
+Conflicts: libssh-2-doc
+Replaces: libssh-2-doc
 Description: A tiny C SSH library. Documentation files
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
