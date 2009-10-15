@@ -1,9 +1,9 @@
-libssh (0.3.4-3) UNRELEASED; urgency=low
+libssh (0.3.4-3) unstable; urgency=low
 
-  * Add correct Conflicts/Replaces for -dev and -doc package
+  * Add correct Conflicts/Replaces for -dev and -doc packages
     (Closes: #550996)
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 15 Oct 2009 09:25:21 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 15 Oct 2009 09:59:57 +0200
 
 libssh (0.3.4-2) unstable; urgency=low
 
