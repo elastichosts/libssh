@@ -28,6 +28,10 @@
 #include <stdio.h>
 #include "libssh/priv.h"
 #include "libssh/ssh1.h"
+#include "libssh/buffer.h"
+#include "libssh/packet.h"
+#include "libssh/channels.h"
+#include "libssh/session.h"
 
 #ifdef WITH_SSH1
 
@@ -40,12 +44,12 @@
  * protocol.
  */
 
-int channel_open_session1(CHANNEL *chan) {
+int channel_open_session1(ssh_channel chan) {
   /*
    * We guess we are requesting an *exec* channel. It can only have one exec
    * channel. So we abort with an error if we need more than one.
    */
-  SSH_SESSION *session = chan->session;
+  ssh_session session = chan->session;
   if (session->exec_channel_opened) {
     ssh_set_error(session, SSH_REQUEST_DENIED,
         "SSH1 supports only one execution channel. "
@@ -73,10 +77,10 @@ int channel_open_session1(CHANNEL *chan) {
  *  much simplier under ssh2. I just hope the defaults values are ok ...
  */
 
-int channel_request_pty_size1(CHANNEL *channel, const char *terminal, int col,
+int channel_request_pty_size1(ssh_channel channel, const char *terminal, int col,
     int row) {
-  SSH_SESSION *session = channel->session;
-  STRING *str = NULL;
+  ssh_session session = channel->session;
+  ssh_string str = NULL;
 
   str = string_from_char(terminal);
   if (str == NULL) {
@@ -126,8 +130,8 @@ int channel_request_pty_size1(CHANNEL *channel, const char *terminal, int col,
   return -1;
 }
 
-int channel_change_pty_size1(CHANNEL *channel, int cols, int rows) {
-  SSH_SESSION *session = channel->session;
+int channel_change_pty_size1(ssh_channel channel, int cols, int rows) {
+  ssh_session session = channel->session;
 
   if (buffer_add_u8(session->out_buffer, SSH_CMSG_WINDOW_SIZE) < 0 ||
       buffer_add_u32(session->out_buffer, ntohl(rows)) < 0 ||
@@ -163,8 +167,8 @@ int channel_change_pty_size1(CHANNEL *channel, int cols, int rows) {
   return -1;
 }
 
-int channel_request_shell1(CHANNEL *channel) {
-  SSH_SESSION *session = channel->session;
+int channel_request_shell1(ssh_channel channel) {
+  ssh_session session = channel->session;
 
   if (buffer_add_u8(session->out_buffer,SSH_CMSG_EXEC_SHELL) < 0) {
     return -1;
@@ -179,9 +183,9 @@ int channel_request_shell1(CHANNEL *channel) {
   return 0;
 }
 
-int channel_request_exec1(CHANNEL *channel, const char *cmd) {
-  SSH_SESSION *session = channel->session;
-  STRING *command = NULL;
+int channel_request_exec1(ssh_channel channel, const char *cmd) {
+  ssh_session session = channel->session;
+  ssh_string command = NULL;
 
   command = string_from_char(cmd);
   if (command == NULL) {
@@ -204,9 +208,9 @@ int channel_request_exec1(CHANNEL *channel, const char *cmd) {
   return 0;
 }
 
-static int channel_rcv_data1(SSH_SESSION *session, int is_stderr) {
-    CHANNEL *channel = session->channels;
-    STRING *str = NULL;
+static int channel_rcv_data1(ssh_session session, int is_stderr) {
+    ssh_channel channel = session->channels;
+    ssh_string str = NULL;
 
     str = buffer_get_ssh_string(session->in_buffer);
     if (str == NULL) {
@@ -218,7 +222,7 @@ static int channel_rcv_data1(SSH_SESSION *session, int is_stderr) {
         "Adding %zu bytes data in %d",
         string_len(str), is_stderr);
 
-    if (channel_default_bufferize(channel, str->string, string_len(str),
+    if (channel_default_bufferize(channel, string_data(str), string_len(str),
           is_stderr) < 0) {
       string_free(str);
       return -1;
@@ -228,9 +232,9 @@ static int channel_rcv_data1(SSH_SESSION *session, int is_stderr) {
     return 0;
 }
 
-static int channel_rcv_close1(SSH_SESSION *session) {
-  CHANNEL *channel = session->channels;
-  u32 status;
+static int channel_rcv_close1(ssh_session session) {
+  ssh_channel channel = session->channels;
+  uint32_t status;
 
   buffer_get_u32(session->in_buffer, &status);
   /*
@@ -253,11 +257,16 @@ static int channel_rcv_close1(SSH_SESSION *session) {
   return 0;
 }
 
-int channel_handle1(SSH_SESSION *session, int type) {
+int channel_handle1(ssh_session session, int type) {
   ssh_log(session, SSH_LOG_RARE, "Channel_handle1(%d)", type);
   switch (type) {
     case SSH_SMSG_STDOUT_DATA:
       if (channel_rcv_data1(session,0) < 0) {
+        return -1;
+      }
+      break;
+    case SSH_SMSG_STDERR_DATA:
+      if (channel_rcv_data1(session,1) < 0) {
         return -1;
       }
       break;
@@ -273,11 +282,11 @@ int channel_handle1(SSH_SESSION *session, int type) {
   return 0;
 }
 
-int channel_write1(CHANNEL *channel, const void *data, int len) {
-  SSH_SESSION *session = channel->session;
+int channel_write1(ssh_channel channel, const void *data, int len) {
+  ssh_session session = channel->session;
   int origlen = len;
   int effectivelen;
-
+  const unsigned char *ptr=data;
   while (len > 0) {
     if (buffer_add_u8(session->out_buffer, SSH_CMSG_STDIN_DATA) < 0) {
       return -1;
@@ -286,11 +295,11 @@ int channel_write1(CHANNEL *channel, const void *data, int len) {
     effectivelen = len > 32000 ? 32000 : len;
 
     if (buffer_add_u32(session->out_buffer, htonl(effectivelen)) < 0 ||
-        buffer_add_data(session->out_buffer, data, effectivelen) < 0) {
+        buffer_add_data(session->out_buffer, ptr, effectivelen) < 0) {
       return -1;
     }
 
-    data += effectivelen;
+    ptr += effectivelen;
     len -= effectivelen;
 
     if (packet_send(session) != SSH_OK) {

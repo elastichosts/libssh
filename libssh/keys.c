@@ -28,6 +28,14 @@
 #include <openssl/rsa.h>
 #endif
 #include "libssh/priv.h"
+#include "libssh/ssh2.h"
+#include "libssh/server.h"
+#include "libssh/buffer.h"
+#include "libssh/agent.h"
+#include "libssh/session.h"
+#include "libssh/keys.h"
+#include "libssh/dh.h"
+#include "libssh/messages.h"
 
 /** \addtogroup ssh_auth
  * @{
@@ -65,14 +73,14 @@ int ssh_type_from_name(const char *name) {
   return -1;
 }
 
-PUBLIC_KEY *publickey_make_dss(SSH_SESSION *session, BUFFER *buffer) {
-  STRING *p = NULL;
-  STRING *q = NULL;
-  STRING *g = NULL;
-  STRING *pubkey = NULL;
-  PUBLIC_KEY *key = NULL;
+ssh_public_key publickey_make_dss(ssh_session session, ssh_buffer buffer) {
+  ssh_string p = NULL;
+  ssh_string q = NULL;
+  ssh_string g = NULL;
+  ssh_string pubkey = NULL;
+  ssh_public_key key = NULL;
 
-  key = malloc(sizeof(PUBLIC_KEY));
+  key = malloc(sizeof(struct ssh_public_key_struct));
   if (key == NULL) {
     buffer_free(buffer);
     return NULL;
@@ -96,10 +104,10 @@ PUBLIC_KEY *publickey_make_dss(SSH_SESSION *session, BUFFER *buffer) {
 #ifdef HAVE_LIBGCRYPT
   gcry_sexp_build(&key->dsa_pub, NULL,
       "(public-key(dsa(p %b)(q %b)(g %b)(y %b)))",
-      string_len(p), p->string,
-      string_len(q), q->string,
-      string_len(g), g->string,
-      string_len(pubkey), pubkey->string);
+      string_len(p), string_data(p),
+      string_len(q), string_data(q),
+      string_len(g), string_data(g),
+      string_len(pubkey), string_data(pubkey));
   if (key->dsa_pub == NULL) {
     goto error;
   }
@@ -151,13 +159,13 @@ error:
   return NULL;
 }
 
-PUBLIC_KEY *publickey_make_rsa(SSH_SESSION *session, BUFFER *buffer,
+ssh_public_key publickey_make_rsa(ssh_session session, ssh_buffer buffer,
     int type) {
-  STRING *e = NULL;
-  STRING *n = NULL;
-  PUBLIC_KEY *key = NULL;
+  ssh_string e = NULL;
+  ssh_string n = NULL;
+  ssh_public_key key = NULL;
 
-  key = malloc(sizeof(PUBLIC_KEY));
+  key = malloc(sizeof(struct ssh_public_key_struct));
   if (key == NULL) {
     buffer_free(buffer);
     return NULL;
@@ -178,8 +186,8 @@ PUBLIC_KEY *publickey_make_rsa(SSH_SESSION *session, BUFFER *buffer,
 #ifdef HAVE_LIBGCRYPT
   gcry_sexp_build(&key->rsa_pub, NULL,
       "(public-key(rsa(n %b)(e %b)))",
-      string_len(n), n->string,
-      string_len(e),e->string);
+      string_len(n), string_data(n),
+      string_len(e),string_data(e));
   if (key->rsa_pub == NULL) {
     goto error;
   }
@@ -218,7 +226,7 @@ error:
   return NULL;
 }
 
-void publickey_free(PUBLIC_KEY *key) {
+void publickey_free(ssh_public_key key) {
   if (key == NULL) {
     return;
   }
@@ -245,9 +253,9 @@ void publickey_free(PUBLIC_KEY *key) {
   SAFE_FREE(key);
 }
 
-PUBLIC_KEY *publickey_from_string(SSH_SESSION *session, STRING *pubkey_s) {
-  BUFFER *tmpbuf = NULL;
-  STRING *type_s = NULL;
+ssh_public_key publickey_from_string(ssh_session session, ssh_string pubkey_s) {
+  ssh_buffer tmpbuf = NULL;
+  ssh_string type_s = NULL;
   char *type_c = NULL;
   int type;
 
@@ -256,7 +264,7 @@ PUBLIC_KEY *publickey_from_string(SSH_SESSION *session, STRING *pubkey_s) {
     return NULL;
   }
 
-  if (buffer_add_data(tmpbuf, pubkey_s->string, string_len(pubkey_s)) < 0) {
+  if (buffer_add_data(tmpbuf, string_data(pubkey_s), string_len(pubkey_s)) < 0) {
     goto error;
   }
 
@@ -296,21 +304,21 @@ error:
  * \returns the public key
  * \see publickey_to_string()
  */
-PUBLIC_KEY *publickey_from_privatekey(PRIVATE_KEY *prv) {
-  PUBLIC_KEY *key = NULL;
+ssh_public_key publickey_from_privatekey(ssh_private_key prv) {
+  ssh_public_key key = NULL;
 #ifdef HAVE_LIBGCRYPT
   gcry_sexp_t sexp;
   const char *tmp = NULL;
   size_t size;
-  STRING *p = NULL;
-  STRING *q = NULL;
-  STRING *g = NULL;
-  STRING *y = NULL;
-  STRING *e = NULL;
-  STRING *n = NULL;
+  ssh_string p = NULL;
+  ssh_string q = NULL;
+  ssh_string g = NULL;
+  ssh_string y = NULL;
+  ssh_string e = NULL;
+  ssh_string n = NULL;
 #endif /* HAVE_LIBGCRYPT */
 
-  key = malloc(sizeof(PUBLIC_KEY));
+  key = malloc(sizeof(struct ssh_public_key_struct));
   if (key == NULL) {
     return NULL;
   }
@@ -369,10 +377,10 @@ PUBLIC_KEY *publickey_from_privatekey(PRIVATE_KEY *prv) {
 
       gcry_sexp_build(&key->dsa_pub, NULL,
           "(public-key(dsa(p %b)(q %b)(g %b)(y %b)))",
-          string_len(p), p->string,
-          string_len(q), q->string,
-          string_len(g), g->string,
-          string_len(y), y->string);
+          string_len(p), string_data(p),
+          string_len(q), string_data(q),
+          string_len(g), string_data(g),
+          string_len(y), string_data(y));
 
       string_burn(p);
       string_free(p);
@@ -428,8 +436,8 @@ PUBLIC_KEY *publickey_from_privatekey(PRIVATE_KEY *prv) {
 
       gcry_sexp_build(&key->rsa_pub, NULL,
           "(public-key(rsa(n %b)(e %b)))",
-          string_len(n), n->string,
-          string_len(e), e->string);
+          string_len(n), string_data(n),
+          string_len(e), string_data(e));
       if (key->rsa_pub == NULL) {
         goto error;
       }
@@ -478,14 +486,14 @@ error:
 }
 
 #ifdef HAVE_LIBGCRYPT
-static int dsa_public_to_string(gcry_sexp_t key, BUFFER *buffer) {
+static int dsa_public_to_string(gcry_sexp_t key, ssh_buffer buffer) {
 #elif defined HAVE_LIBCRYPTO
-static int dsa_public_to_string(DSA *key, BUFFER *buffer) {
+static int dsa_public_to_string(DSA *key, ssh_buffer buffer) {
 #endif
-  STRING *p = NULL;
-  STRING *q = NULL;
-  STRING *g = NULL;
-  STRING *n = NULL;
+  ssh_string p = NULL;
+  ssh_string q = NULL;
+  ssh_string g = NULL;
+  ssh_string n = NULL;
 
   int rc = -1;
 
@@ -582,13 +590,13 @@ error:
 }
 
 #ifdef HAVE_LIBGCRYPT
-static int rsa_public_to_string(gcry_sexp_t key, BUFFER *buffer) {
+static int rsa_public_to_string(gcry_sexp_t key, ssh_buffer buffer) {
 #elif defined HAVE_LIBCRYPTO
-static int rsa_public_to_string(RSA *key, BUFFER *buffer) {
+static int rsa_public_to_string(RSA *key, ssh_buffer buffer) {
 #endif
 
-  STRING *e = NULL;
-  STRING *n = NULL;
+  ssh_string e = NULL;
+  ssh_string n = NULL;
 
   int rc = -1;
 
@@ -654,10 +662,10 @@ error:
  * \returns a SSH String containing the public key
  * \see string_free()
  */
-STRING *publickey_to_string(PUBLIC_KEY *key) {
-  STRING *type = NULL;
-  STRING *ret = NULL;
-  BUFFER *buf = NULL;
+ssh_string publickey_to_string(ssh_public_key key) {
+  ssh_string type = NULL;
+  ssh_string ret = NULL;
+  ssh_buffer buf = NULL;
 
   buf = buffer_new();
   if (buf == NULL) {
@@ -701,12 +709,12 @@ error:
 }
 
 /* Signature decoding functions */
-static STRING *signature_to_string(SIGNATURE *sign) {
+static ssh_string signature_to_string(SIGNATURE *sign) {
   unsigned char buffer[40] = {0};
-  BUFFER *tmpbuf = NULL;
-  STRING *str = NULL;
-  STRING *tmp = NULL;
-  STRING *rs = NULL;
+  ssh_buffer tmpbuf = NULL;
+  ssh_string str = NULL;
+  ssh_string tmp = NULL;
+  ssh_string rs = NULL;
   int rc = -1;
 #ifdef HAVE_LIBGCRYPT
   const char *r = NULL;
@@ -714,8 +722,8 @@ static STRING *signature_to_string(SIGNATURE *sign) {
   gcry_sexp_t sexp;
   size_t size = 0;
 #elif defined HAVE_LIBCRYPTO
-  STRING *r = NULL;
-  STRING *s = NULL;
+  ssh_string r = NULL;
+  ssh_string s = NULL;
 #endif
 
   tmpbuf = buffer_new();
@@ -776,8 +784,8 @@ static STRING *signature_to_string(SIGNATURE *sign) {
         return NULL;
       }
 
-      memcpy(buffer, r->string + string_len(r) - 20, 20);
-      memcpy(buffer + 20, s->string + string_len(s) - 20, 20);
+      memcpy(buffer, (char *)string_data(r) + string_len(r) - 20, 20);
+      memcpy(buffer + 20, (char *)string_data(s) + string_len(s) - 20, 20);
 
       string_free(r);
       string_free(s);
@@ -845,13 +853,13 @@ static STRING *signature_to_string(SIGNATURE *sign) {
 }
 
 /* TODO : split this function in two so it becomes smaller */
-SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,
-    PUBLIC_KEY *pubkey, int needed_type) {
+SIGNATURE *signature_from_string(ssh_session session, ssh_string signature,
+    ssh_public_key pubkey, int needed_type) {
   SIGNATURE *sign = NULL;
-  BUFFER *tmpbuf = NULL;
-  STRING *rs = NULL;
-  STRING *type_s = NULL;
-  STRING *e = NULL;
+  ssh_buffer tmpbuf = NULL;
+  ssh_string rs = NULL;
+  ssh_string type_s = NULL;
+  ssh_string e = NULL;
   char *type_c = NULL;
   int type;
   int len;
@@ -860,8 +868,8 @@ SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,
   gcry_sexp_t sig;
 #elif defined HAVE_LIBCRYPTO
   DSA_SIG *sig = NULL;
-  STRING *r = NULL;
-  STRING *s = NULL;
+  ssh_string r = NULL;
+  ssh_string s = NULL;
 #endif
 
   sign = malloc(sizeof(SIGNATURE));
@@ -877,7 +885,7 @@ SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,
     return NULL;
   }
 
-  if (buffer_add_data(tmpbuf, signature->string, string_len(signature)) < 0) {
+  if (buffer_add_data(tmpbuf, string_data(signature), string_len(signature)) < 0) {
     signature_free(sign);
     buffer_free(tmpbuf);
     return NULL;
@@ -925,7 +933,7 @@ SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,
        * them to bignums (ou pas ;) */
 #ifdef HAVE_LIBGCRYPT
       if (gcry_sexp_build(&sig, NULL, "(sig-val(dsa(r %b)(s %b)))",
-            20 ,rs->string, 20, rs->string + 20)) {
+            20 ,string_data(rs), 20,(unsigned char *)string_data(rs) + 20)) {
         string_free(rs);
         signature_free(sign);
         return NULL;
@@ -941,8 +949,8 @@ SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,
         return NULL;
       }
 
-      string_fill(r, rs->string, 20);
-      string_fill(s, rs->string + 20, 20);
+      string_fill(r, string_data(rs), 20);
+      string_fill(s, (char *)string_data(rs) + 20, 20);
 
       sig = DSA_SIG_new();
       if (sig == NULL) {
@@ -1003,7 +1011,7 @@ SIGNATURE *signature_from_string(SSH_SESSION *session, STRING *signature,
       sign->type = TYPE_RSA;
 #ifdef HAVE_LIBGCRYPT
       if (gcry_sexp_build(&sig, NULL, "(sig-val(rsa(s %b)))",
-          string_len(e), e->string)) {
+          string_len(e), string_data(e))) {
         signature_free(sign);
         string_free(e);
         return NULL;
@@ -1069,8 +1077,8 @@ void signature_free(SIGNATURE *sign) {
  * I think now, maybe it's a bad idea to name it has it should have be
  * named in libcrypto
  */
-static STRING *RSA_do_sign(const unsigned char *payload, int len, RSA *privkey) {
-  STRING *sign = NULL;
+static ssh_string RSA_do_sign(const unsigned char *payload, int len, RSA *privkey) {
+  ssh_string sign = NULL;
   unsigned char *buffer = NULL;
   unsigned int size;
 
@@ -1098,11 +1106,11 @@ static STRING *RSA_do_sign(const unsigned char *payload, int len, RSA *privkey) 
 #endif
 
 #ifndef _WIN32
-STRING *ssh_do_sign_with_agent(struct ssh_session *session,
-    struct buffer_struct *buf, struct public_key_struct *publickey) {
-  struct buffer_struct *sigbuf = NULL;
-  struct string_struct *signature = NULL;
-  struct string_struct *session_id = NULL;
+ssh_string ssh_do_sign_with_agent(ssh_session session,
+    struct ssh_buffer_struct *buf, struct ssh_public_key_struct *publickey) {
+  struct ssh_buffer_struct *sigbuf = NULL;
+  struct ssh_string_struct *signature = NULL;
+  struct ssh_string_struct *session_id = NULL;
   struct ssh_crypto_struct *crypto = NULL;
 
   if (session->current_crypto) {
@@ -1147,15 +1155,79 @@ STRING *ssh_do_sign_with_agent(struct ssh_session *session,
 #endif /* _WIN32 */
 
 /*
+ * This function concats in a buffer the values needed to do a signature
+ * verification. */
+ssh_buffer ssh_userauth_build_digest(ssh_session session, ssh_message msg, char *service) {
+/*
+     The value of 'signature' is a signature by the corresponding private
+   key over the following data, in the following order:
+
+      string    session identifier
+      byte      SSH_MSG_USERAUTH_REQUEST
+      string    user name
+      string    service name
+      string    "publickey"
+      boolean   TRUE
+      string    public key algorithm name
+      string    public key to be used for authentication
+*/
+	struct ssh_crypto_struct *crypto = session->current_crypto ? session->current_crypto :
+                                             session->next_crypto;
+  ssh_buffer buffer = NULL;
+  ssh_string session_id = NULL;
+  uint8_t type = SSH2_MSG_USERAUTH_REQUEST;
+  ssh_string username = string_from_char(msg->auth_request.username);
+  ssh_string servicename = string_from_char(service);
+  ssh_string method = string_from_char("publickey");
+  uint8_t has_sign = 1;
+  ssh_string algo = string_from_char(msg->auth_request.public_key->type_c);
+  ssh_string publickey = publickey_to_string(msg->auth_request.public_key);
+
+  buffer = buffer_new();
+  if (buffer == NULL) {
+    goto error;
+  }
+  session_id = string_new(SHA_DIGEST_LEN);
+  if (session_id == NULL) {
+    buffer_free(buffer);
+    buffer = NULL;
+    goto error;
+  }
+  string_fill(session_id, crypto->session_id, SHA_DIGEST_LEN);
+
+  if(buffer_add_ssh_string(buffer, session_id) < 0 ||
+     buffer_add_u8(buffer, type) < 0 ||
+     buffer_add_ssh_string(buffer, username) < 0 ||
+     buffer_add_ssh_string(buffer, servicename) < 0 ||
+     buffer_add_ssh_string(buffer, method) < 0 ||
+     buffer_add_u8(buffer, has_sign) < 0 ||
+     buffer_add_ssh_string(buffer, algo) < 0 ||
+     buffer_add_ssh_string(buffer, publickey) < 0) {
+    buffer_free(buffer);
+    buffer = NULL;
+    goto error;
+  }
+
+error:
+  if(session_id) string_free(session_id);
+  if(username) string_free(username);
+  if(servicename) string_free(servicename);
+  if(method) string_free(method);
+  if(algo) string_free(algo);
+  if(publickey) string_free(publickey);
+  return buffer;
+}
+
+/*
  * This function signs the session id (known as H) as a string then
  * the content of sigbuf */
-STRING *ssh_do_sign(SSH_SESSION *session, BUFFER *sigbuf,
-    PRIVATE_KEY *privatekey) {
-  CRYPTO *crypto = session->current_crypto ? session->current_crypto :
+ssh_string ssh_do_sign(ssh_session session, ssh_buffer sigbuf,
+    ssh_private_key privatekey) {
+  struct ssh_crypto_struct *crypto = session->current_crypto ? session->current_crypto :
     session->next_crypto;
   unsigned char hash[SHA_DIGEST_LEN + 1] = {0};
-  STRING *session_str = NULL;
-  STRING *signature = NULL;
+  ssh_string session_str = NULL;
+  ssh_string signature = NULL;
   SIGNATURE *sign = NULL;
   SHACTX ctx = NULL;
 #ifdef HAVE_LIBGCRYPT
@@ -1248,8 +1320,8 @@ STRING *ssh_do_sign(SSH_SESSION *session, BUFFER *sigbuf,
   return signature;
 }
 
-STRING *ssh_encrypt_rsa1(SSH_SESSION *session, STRING *data, PUBLIC_KEY *key) {
-  STRING *str = NULL;
+ssh_string ssh_encrypt_rsa1(ssh_session session, ssh_string data, ssh_public_key key) {
+  ssh_string str = NULL;
   size_t len = string_len(data);
   size_t size = 0;
 #ifdef HAVE_LIBGCRYPT
@@ -1258,7 +1330,7 @@ STRING *ssh_encrypt_rsa1(SSH_SESSION *session, STRING *data, PUBLIC_KEY *key) {
   gcry_sexp_t data_sexp;
 
   if (gcry_sexp_build(&data_sexp, NULL, "(data(flags pkcs1)(value %b))",
-      len, data->string)) {
+      len, string_data(data))) {
     ssh_set_error(session, SSH_FATAL, "RSA1 encrypt: libgcrypt error");
     return NULL;
   }
@@ -1302,7 +1374,7 @@ STRING *ssh_encrypt_rsa1(SSH_SESSION *session, STRING *data, PUBLIC_KEY *key) {
     return NULL;
   }
 
-  if (RSA_public_encrypt(len, data->string, str->string, key->rsa_pub,
+  if (RSA_public_encrypt(len, string_data(data), string_data(str), key->rsa_pub,
       RSA_PKCS1_PADDING) < 0) {
     string_free(str);
     return NULL;
@@ -1314,11 +1386,11 @@ STRING *ssh_encrypt_rsa1(SSH_SESSION *session, STRING *data, PUBLIC_KEY *key) {
 
 
 /* this function signs the session id */
-STRING *ssh_sign_session_id(SSH_SESSION *session, PRIVATE_KEY *privatekey) {
-  CRYPTO *crypto=session->current_crypto ? session->current_crypto :
+ssh_string ssh_sign_session_id(ssh_session session, ssh_private_key privatekey) {
+	struct ssh_crypto_struct *crypto=session->current_crypto ? session->current_crypto :
     session->next_crypto;
   unsigned char hash[SHA_DIGEST_LEN + 1] = {0};
-  STRING *signature = NULL;
+  ssh_string signature = NULL;
   SIGNATURE *sign = NULL;
   SHACTX ctx = NULL;
 #ifdef HAVE_LIBGCRYPT

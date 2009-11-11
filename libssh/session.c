@@ -21,11 +21,18 @@
  * MA 02111-1307, USA.
  */
 
+#include "config.h"
 #include <string.h>
 #include <stdlib.h>
 #include "libssh/libssh.h"
 #include "libssh/priv.h"
 #include "libssh/server.h"
+#include "libssh/socket.h"
+#include "libssh/agent.h"
+#include "libssh/packet.h"
+#include "libssh/session.h"
+#include "libssh/misc.h"
+
 #define FIRST_CHANNEL 42 // why not ? it helps to find bugs.
 
 /** \defgroup ssh_session SSH Session
@@ -37,31 +44,24 @@
 /** \brief creates a new ssh session
  * \returns new ssh_session pointer
  */
-SSH_SESSION *ssh_new(void) {
-  SSH_SESSION *session;
+ssh_session ssh_new(void) {
+  ssh_session session;
 
-  session = malloc(sizeof (SSH_SESSION));
+  session = malloc(sizeof (struct ssh_session_struct));
   if (session == NULL) {
     return NULL;
   }
-
-  memset(session, 0, sizeof(SSH_SESSION));
+  ZERO_STRUCTP(session);
 
   session->next_crypto = crypto_new();
   if (session->next_crypto == NULL) {
     goto err;
   }
 
-  session->maxchannel = FIRST_CHANNEL;
   session->socket = ssh_socket_new(session);
   if (session->socket == NULL) {
     goto err;
   }
-
-  session->alive = 0;
-  session->auth_methods = 0;
-  session->blocking = 1;
-  session->log_indent = 0;
 
   session->out_buffer = buffer_new();
   if (session->out_buffer == NULL) {
@@ -73,6 +73,22 @@ SSH_SESSION *ssh_new(void) {
     goto err;
   }
 
+  session->alive = 0;
+  session->auth_methods = 0;
+  session->blocking = 1;
+  session->log_indent = 0;
+  session->maxchannel = FIRST_CHANNEL;
+
+  /* options */
+  session->port = 22;
+  session->fd = -1;
+  session->ssh2 = 1;
+#ifdef WITH_SSH1
+  session->ssh1 = 1;
+#else
+  session->ssh1 = 0;
+#endif
+
 #ifndef _WIN32
     session->agent = agent_new(session);
     if (session->agent == NULL) {
@@ -82,11 +98,16 @@ SSH_SESSION *ssh_new(void) {
     return session;
 
 err:
-    ssh_cleanup(session);
+    ssh_free(session);
     return NULL;
 }
 
-void ssh_cleanup(SSH_SESSION *session) {
+/**
+ * @brief deallocate a session handle
+ * @see ssh_disconnect()
+ * @see ssh_new()
+ */
+void ssh_free(ssh_session session) {
   int i;
   enter_function();
 
@@ -126,20 +147,37 @@ void ssh_cleanup(SSH_SESSION *session) {
 
   privatekey_free(session->dsa_key);
   privatekey_free(session->rsa_key);
-  ssh_message_free(session->ssh_message);
-  ssh_options_free(session->options);
+  if(session->ssh_message_list){
+    ssh_message msg;
+    while((msg=ssh_list_get_head(ssh_message ,session->ssh_message_list))
+        != NULL){
+      ssh_message_free(msg);
+    }
+    ssh_list_free(session->ssh_message_list);
+  }
+
+  /* options */
+  SAFE_FREE(session->username);
+  SAFE_FREE(session->host);
+  SAFE_FREE(session->identity);
+  SAFE_FREE(session->sshdir);
+  SAFE_FREE(session->knownhosts);
+
+  for (i = 0; i < 10; i++) {
+    if (session->wanted_methods[i]) {
+      SAFE_FREE(session->wanted_methods[i]);
+    }
+  }
 
   /* burn connection, it could hang sensitive datas */
-  memset(session,'X',sizeof(SSH_SESSION));
-
+  ZERO_STRUCTP(session);
   SAFE_FREE(session);
-  /* FIXME: leave_function(); ??? */
 }
 
 /** \brief disconnect impolitely from remote host
  * \param session current ssh session
  */
-void ssh_silent_disconnect(SSH_SESSION *session) {
+void ssh_silent_disconnect(ssh_session session) {
   enter_function();
 
   if (session == NULL) {
@@ -149,22 +187,7 @@ void ssh_silent_disconnect(SSH_SESSION *session) {
   ssh_socket_close(session->socket);
   session->alive = 0;
   ssh_disconnect(session);
-  /* FIXME: leave_function(); ??? */
-}
-
-/** \brief set the options for the current session
- * \param session ssh session
- * \param options options structure
- * \see ssh_new()
- * \see ssh_options_new()
- */
-void ssh_set_options(SSH_SESSION *session, SSH_OPTIONS *options) {
-  if (session == NULL || options == NULL) {
-    return;
-  }
-
-  session->options = options;
-  session->log_verbosity = options->log_verbosity;
+  leave_function();
 }
 
 /** \brief set the session in blocking/nonblocking mode
@@ -172,7 +195,7 @@ void ssh_set_options(SSH_SESSION *session, SSH_OPTIONS *options) {
  * \param blocking zero for nonblocking mode
  * \bug nonblocking code is in development and won't work as expected
  */
-void ssh_set_blocking(SSH_SESSION *session, int blocking) {
+void ssh_set_blocking(ssh_session session, int blocking) {
   if (session == NULL) {
     return;
   }
@@ -187,7 +210,7 @@ void ssh_set_blocking(SSH_SESSION *session, int blocking) {
  * \return file descriptor of the connection, or -1 if it is
  * not connected
  */
-socket_t ssh_get_fd(SSH_SESSION *session) {
+socket_t ssh_get_fd(ssh_session session) {
   if (session == NULL) {
     return -1;
   }
@@ -198,7 +221,7 @@ socket_t ssh_get_fd(SSH_SESSION *session) {
 /** \brief say to the session it has data to read on the file descriptor without blocking
  * \param session ssh session
  */
-void ssh_set_fd_toread(SSH_SESSION *session) {
+void ssh_set_fd_toread(ssh_session session) {
   if (session == NULL) {
     return;
   }
@@ -209,7 +232,7 @@ void ssh_set_fd_toread(SSH_SESSION *session) {
 /** \brief say the session it may write to the file descriptor without blocking
  * \param session ssh session
  */
-void ssh_set_fd_towrite(SSH_SESSION *session) {
+void ssh_set_fd_towrite(ssh_session session) {
   if (session == NULL) {
     return;
   }
@@ -220,7 +243,7 @@ void ssh_set_fd_towrite(SSH_SESSION *session) {
 /** \brief say the session it has an exception to catch on the file descriptor
  * \param session ssh session
  */
-void ssh_set_fd_except(SSH_SESSION *session) {
+void ssh_set_fd_except(ssh_session session) {
   if (session == NULL) {
     return;
   }
@@ -231,7 +254,7 @@ void ssh_set_fd_except(SSH_SESSION *session) {
 /** \warning I don't remember if this should be internal or not
  */
 /* looks if there is data to read on the socket and parse it. */
-int ssh_handle_packets(SSH_SESSION *session) {
+int ssh_handle_packets(ssh_session session) {
   int w = 0;
   int e = 0;
   int rc = -1;
@@ -269,7 +292,7 @@ int ssh_handle_packets(SSH_SESSION *session) {
  *          which respectively means the session is closed, has data to read on
  *          the connection socket and session was closed due to an error.
  */
-int ssh_get_status(SSH_SESSION *session) {
+int ssh_get_status(ssh_session session) {
   int socketstate;
   int r = 0;
 
@@ -297,7 +320,7 @@ int ssh_get_status(SSH_SESSION *session) {
  * \return message sent by the server along with the disconnect, or NULL in which case the reason of the disconnect may be found with ssh_get_error.
  * \see ssh_get_error()
  */
-const char *ssh_get_disconnect_message(SSH_SESSION *session) {
+const char *ssh_get_disconnect_message(ssh_session session) {
   if (session == NULL) {
     return NULL;
   }
@@ -325,7 +348,7 @@ const char *ssh_get_disconnect_message(SSH_SESSION *session) {
  *
  * @return 1 or 2, for ssh1 or ssh2, < 0 on error.
  */
-int ssh_get_version(SSH_SESSION *session) {
+int ssh_get_version(ssh_session session) {
   if (session == NULL) {
     return -1;
   }

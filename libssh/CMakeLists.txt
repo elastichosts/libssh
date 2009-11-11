@@ -25,6 +25,7 @@ if (WITH_STATIC_LIB)
 endif (WITH_STATIC_LIB)
 
 set(LIBSSH_LINK_LIBRARIES
+  ${LIBSSH_REQUIRED_LIBRARIES}
   ${ZLIB_LIBRARIES}
 )
 
@@ -34,6 +35,13 @@ if (WIN32)
     ws2_32
   )
 endif (WIN32)
+
+if (HAVE_LIBSOCKET)
+  set(LIBSSH_LINK_LIBRARIES
+    ${LIBSSH_LINK_LIBRARIES}
+    socket
+  )
+endif (HAVE_LIBSOCKET)
 
 if (CRYPTO_LIBRARY)
   set(LIBSSH_PRIVATE_INCLUDE_DIRS
@@ -59,14 +67,15 @@ if (GCRYPT_LIBRARY)
   )
 endif (GCRYPT_LIBRARY)
 
-
 set(libssh_SRCS
   agent.c
   auth.c
   base64.c
   buffer.c
+  callbacks.c
   channels.c
   client.c
+  config.c
   connect.c
   crc32.c
   crypt.c
@@ -86,10 +95,10 @@ set(libssh_SRCS
   packet.c
   poll.c
   session.c
+  scp.c
   socket.c
   string.c
   wrapper.c
-  libssh.map
 )
 
 if (WITH_SFTP)
@@ -139,21 +148,26 @@ set_target_properties(
         ${LIBRARY_SOVERSION}
       OUTPUT_NAME
         ssh
+      DEFINE_SYMBOL
+        LIBSSH_EXPORTS
 )
+
+if (WITH_VISIBILITY_HIDDEN)
+  set_target_properties(${LIBSSH_SHARED_LIBRARY} PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
+endif (WITH_VISIBILITY_HIDDEN)
+
 
 install(
   TARGETS
     ${LIBSSH_SHARED_LIBRARY}
-  DESTINATION
-    ${LIB_INSTALL_DIR}
-  COMPONENT
-    libraries
+  RUNTIME DESTINATION ${BIN_INSTALL_DIR}
+  LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+  ARCHIVE DESTINATION ${LIB_INSTALL_DIR}
+  COMPONENT libraries
 )
 
 if (WITH_STATIC_LIB)
   add_library(${LIBSSH_STATIC_LIBRARY} STATIC ${libssh_SRCS})
-
-  target_link_libraries(${LIBSSH_STATIC_LIBRARY} ${LIBSSH_LINK_LIBRARIES})
 
   set_target_properties(
     ${LIBSSH_STATIC_LIBRARY}
@@ -162,8 +176,8 @@ if (WITH_STATIC_LIB)
           ${LIBRARY_VERSION}
         SOVERSION
           ${LIBRARY_SOVERSION}
-        OUTPUT_NAME
-          ssh
+        COMPILE_FLAGS
+          "-DLIBSSH_STATIC"
   )
 
   install(

@@ -31,10 +31,15 @@
 
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
+#include "libssh/buffer.h"
+#include "libssh/packet.h"
+#include "libssh/socket.h"
+#include "libssh/session.h"
+#include "libssh/dh.h"
 
-#define set_status(opt,status) do {\
-        if (opt->connect_status_function) \
-            opt->connect_status_function(opt->connect_status_arg, status); \
+#define set_status(session, status) do {\
+        if (session->callbacks && session->callbacks->connect_status_function) \
+            session->callbacks->connect_status_function(session->callbacks->userdata, status); \
     } while (0)
 
 /**
@@ -48,7 +53,7 @@
  *
  * @return A newly allocated string with the banner or NULL on error.
  */
-char *ssh_get_banner(SSH_SESSION *session) {
+char *ssh_get_banner(ssh_session session) {
   char buffer[128] = {0};
   char *str = NULL;
   int i;
@@ -97,7 +102,7 @@ char *ssh_get_banner(SSH_SESSION *session) {
  *
  * @see ssh_get_banner()
  */
-static int ssh_analyze_banner(SSH_SESSION *session, int *ssh1, int *ssh2) {
+static int ssh_analyze_banner(ssh_session session, int *ssh1, int *ssh2) {
   const char *banner = session->serverbanner;
   const char *openssh;
 
@@ -155,7 +160,7 @@ static int ssh_analyze_banner(SSH_SESSION *session, int *ssh1, int *ssh2) {
  *
  * @return 0 on success, < 0 on error.
  */
-int ssh_send_banner(SSH_SESSION *session, int server) {
+int ssh_send_banner(ssh_session session, int server) {
   const char *banner = NULL;
   char buffer[128] = {0};
 
@@ -163,8 +168,8 @@ int ssh_send_banner(SSH_SESSION *session, int server) {
 
   banner = session->version == 1 ? CLIENTBANNER1 : CLIENTBANNER2;
 
-  if (session->options->banner) {
-    banner = session->options->banner;
+  if (session->xbanner) {
+    banner = session->xbanner;
   }
 
   if (server) {
@@ -203,11 +208,11 @@ int ssh_send_banner(SSH_SESSION *session, int server) {
 #define DH_STATE_NEWKEYS_TO_SEND 3
 #define DH_STATE_NEWKEYS_SENT 4
 #define DH_STATE_FINISHED 5
-static int dh_handshake(SSH_SESSION *session) {
-  STRING *e = NULL;
-  STRING *f = NULL;
-  STRING *pubkey = NULL;
-  STRING *signature = NULL;
+static int dh_handshake(ssh_session session) {
+  ssh_string e = NULL;
+  ssh_string f = NULL;
+  ssh_string pubkey = NULL;
+  ssh_string signature = NULL;
   int rc = SSH_ERROR;
 
   enter_function();
@@ -413,8 +418,8 @@ error:
  *
  * @return 0 on success, < 0 on error.
  */
-int ssh_service_request(SSH_SESSION *session, const char *service) {
-  STRING *service_s = NULL;
+int ssh_service_request(ssh_session session, const char *service) {
+  ssh_string service_s = NULL;
 
   enter_function();
 
@@ -469,8 +474,7 @@ int ssh_service_request(SSH_SESSION *session, const char *service) {
  * \see ssh_new()
  * \see ssh_disconnect()
  */
-int ssh_connect(SSH_SESSION *session) {
-  SSH_OPTIONS *options = session->options;
+int ssh_connect(ssh_session session) {
   int ssh1 = 0;
   int ssh2 = 0;
   int fd = -1;
@@ -479,12 +483,6 @@ int ssh_connect(SSH_SESSION *session) {
     ssh_set_error(session, SSH_FATAL, "Invalid session pointer");
     return SSH_ERROR;
   }
-
-  if (session->options == NULL) {
-    ssh_set_error(session, SSH_FATAL, "No options set");
-    return SSH_ERROR;
-  }
-  options = session->options;
 
   enter_function();
 
@@ -495,22 +493,22 @@ int ssh_connect(SSH_SESSION *session) {
     leave_function();
     return SSH_ERROR;
   }
-  if (options->fd == -1 && options->host == NULL) {
+  if (session->fd == -1 && session->host == NULL) {
     ssh_set_error(session, SSH_FATAL, "Hostname required");
     leave_function();
     return SSH_ERROR;
   }
-  if (options->fd != -1) {
-    fd = options->fd;
+  if (session->fd != -1) {
+    fd = session->fd;
   } else {
-    fd = ssh_connect_host(session, options->host, options->bindaddr,
-        options->port, options->timeout, options->timeout_usec);
+    fd = ssh_connect_host(session, session->host, session->bindaddr,
+        session->port, session->timeout, session->timeout_usec);
   }
   if (fd < 0) {
     leave_function();
     return SSH_ERROR;
   }
-  set_status(options, 0.2);
+  set_status(session, 0.2);
 
   ssh_socket_set_fd(session->socket, fd);
 
@@ -522,7 +520,7 @@ int ssh_connect(SSH_SESSION *session) {
     leave_function();
     return SSH_ERROR;
   }
-  set_status(options, 0.4);
+  set_status(session, 0.4);
 
   ssh_log(session, SSH_LOG_RARE,
       "SSH server banner: %s", session->serverbanner);
@@ -536,9 +534,9 @@ int ssh_connect(SSH_SESSION *session) {
   }
 
   /* Here we decide which version of the protocol to use. */
-  if (ssh2 && options->ssh2allowed) {
+  if (ssh2 && session->ssh2) {
     session->version = 2;
-  } else if(ssh1 && options->ssh1allowed) {
+  } else if(ssh1 && session->ssh1) {
     session->version = 1;
   } else {
     ssh_set_error(session, SSH_FATAL,
@@ -557,7 +555,7 @@ int ssh_connect(SSH_SESSION *session) {
     leave_function();
     return SSH_ERROR;
   }
-  set_status(options, 0.5);
+  set_status(session, 0.5);
 
   switch (session->version) {
     case 2:
@@ -567,7 +565,7 @@ int ssh_connect(SSH_SESSION *session) {
         leave_function();
         return SSH_ERROR;
       }
-      set_status(options,0.6);
+      set_status(session,0.6);
 
       ssh_list_kex(session, &session->server_kex);
       if (set_kex(session) < 0) {
@@ -582,7 +580,7 @@ int ssh_connect(SSH_SESSION *session) {
         leave_function();
         return SSH_ERROR;
       }
-      set_status(options,0.8);
+      set_status(session,0.8);
 
       if (dh_handshake(session) < 0) {
         ssh_socket_close(session->socket);
@@ -590,7 +588,7 @@ int ssh_connect(SSH_SESSION *session) {
         leave_function();
         return SSH_ERROR;
       }
-      set_status(options,1.0);
+      set_status(session,1.0);
 
       session->connected = 1;
       break;
@@ -601,7 +599,7 @@ int ssh_connect(SSH_SESSION *session) {
         leave_function();
         return SSH_ERROR;
       }
-      set_status(options,0.6);
+      set_status(session,0.6);
 
       session->connected = 1;
       break;
@@ -621,7 +619,7 @@ int ssh_connect(SSH_SESSION *session) {
  *
  * @return A newly allocated string with the banner, NULL on error.
  */
-char *ssh_get_issue_banner(SSH_SESSION *session) {
+char *ssh_get_issue_banner(ssh_session session) {
   if (session == NULL || session->banner == NULL) {
     return NULL;
   }
@@ -639,7 +637,7 @@ char *ssh_get_issue_banner(SSH_SESSION *session) {
  *
  * @return The version number if available, 0 otherwise.
  */
-int ssh_get_openssh_version(SSH_SESSION *session) {
+int ssh_get_openssh_version(ssh_session session) {
   if (session == NULL) {
     return 0;
   }
@@ -649,11 +647,12 @@ int ssh_get_openssh_version(SSH_SESSION *session) {
 
 /**
  * @brief Disconnect from a session (client or server).
+ * The session can then be reused to open a new session.
  *
  * @param session       The SSH session to disconnect.
  */
-void ssh_disconnect(SSH_SESSION *session) {
-  STRING *str = NULL;
+void ssh_disconnect(ssh_session session) {
+  ssh_string str = NULL;
 
   if (session == NULL) {
     return;
@@ -688,7 +687,6 @@ void ssh_disconnect(SSH_SESSION *session) {
 
 error:
   leave_function();
-  ssh_cleanup(session);
 }
 
 const char *ssh_copyright(void) {

@@ -21,14 +21,20 @@
  * MA 02111-1307, USA.
  */
 
+#include "config.h"
+
 #include <string.h>
 #include <stdlib.h>
 
 #include "libssh/priv.h"
 #include "libssh/ssh1.h"
+#include "libssh/buffer.h"
+#include "libssh/packet.h"
+#include "libssh/session.h"
+#include "libssh/string.h"
 
 #ifdef WITH_SSH1
-static int wait_auth1_status(SSH_SESSION *session) {
+static int wait_auth1_status(ssh_session session) {
   /* wait for a packet */
   if (packet_read(session) != SSH_OK) {
     return SSH_AUTH_ERROR;
@@ -51,19 +57,19 @@ static int wait_auth1_status(SSH_SESSION *session) {
   return SSH_AUTH_ERROR;
 }
 
-static int send_username(SSH_SESSION *session, const char *username) {
-  STRING *user = NULL;
+static int send_username(ssh_session session, const char *username) {
+  ssh_string user = NULL;
   /* returns SSH_AUTH_SUCCESS or SSH_AUTH_DENIED */
   if(session->auth_service_asked) {
     return session->auth_service_asked;
   }
 
   if (!username) {
-    if(!(username = session->options->username)) {
-      if(ssh_options_default_username(session->options)) {
+    if(!(username = session->username)) {
+      if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
         return session->auth_service_asked = SSH_AUTH_ERROR;
       } else {
-        username = session->options->username;
+        username = session->username;
       }
     }
   }
@@ -91,16 +97,16 @@ static int send_username(SSH_SESSION *session, const char *username) {
 }
 
 /* use the "none" authentication question */
-int ssh_userauth1_none(SSH_SESSION *session, const char *username){
+int ssh_userauth1_none(ssh_session session, const char *username){
     return send_username(session, username);
 }
 
 /*
-int ssh_userauth_offer_pubkey(SSH_SESSION *session, char *username,int type, STRING *publickey){
-    STRING *user;
-    STRING *service;
-    STRING *method;
-    STRING *algo;
+int ssh_userauth_offer_pubkey(ssh_session session, char *username,int type, ssh_string publickey){
+    ssh_string user;
+    ssh_string service;
+    ssh_string method;
+    ssh_string algo;
     int err=SSH_AUTH_ERROR;
     if(!username)
         if(!(username=session->options->username)){
@@ -136,8 +142,8 @@ int ssh_userauth_offer_pubkey(SSH_SESSION *session, char *username,int type, STR
 /** \internal
  * \todo implement ssh1 public key
  */
-int ssh_userauth1_offer_pubkey(SSH_SESSION *session, const char *username,
-    int type, STRING *pubkey) {
+int ssh_userauth1_offer_pubkey(ssh_session session, const char *username,
+    int type, ssh_string pubkey) {
   (void) session;
   (void) username;
   (void) type;
@@ -146,12 +152,12 @@ int ssh_userauth1_offer_pubkey(SSH_SESSION *session, const char *username,
 }
 
 /*
-int ssh_userauth_pubkey(SSH_SESSION *session, char *username, STRING *publickey, PRIVATE_KEY *privatekey){
-    STRING *user;
-    STRING *service;
-    STRING *method;
-    STRING *algo;
-    STRING *sign;
+int ssh_userauth_pubkey(ssh_session session, char *username, ssh_string publickey, ssh_private_key privatekey){
+    ssh_string user;
+    ssh_string service;
+    ssh_string method;
+    ssh_string algo;
+    ssh_string sign;
     int err=SSH_AUTH_ERROR;
     if(!username)
         if(!(username=session->options->username)){
@@ -192,9 +198,9 @@ int ssh_userauth_pubkey(SSH_SESSION *session, char *username, STRING *publickey,
 }
 */
 
-int ssh_userauth1_password(SSH_SESSION *session, const char *username,
+int ssh_userauth1_password(ssh_session session, const char *username,
     const char *password) {
-  STRING *pwd = NULL;
+  ssh_string pwd = NULL;
   int rc;
 
   rc = send_username(session, username);

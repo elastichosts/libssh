@@ -21,7 +21,6 @@
  * MA 02111-1307, USA.
  */
 
-#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
@@ -35,6 +34,10 @@
 #include <sys/un.h>
 #endif
 #include "libssh/priv.h"
+#include "libssh/socket.h"
+#include "libssh/buffer.h"
+#include "libssh/poll.h"
+#include "libssh/session.h"
 
 /** \defgroup ssh_socket SSH Sockets
  * \addtogroup ssh_socket
@@ -48,9 +51,9 @@ struct socket {
                        not block */
   int data_to_write;
   int data_except;
-  BUFFER *out_buffer;
-  BUFFER *in_buffer;
-  SSH_SESSION *session;
+  ssh_buffer out_buffer;
+  ssh_buffer in_buffer;
+  ssh_session session;
 };
 
 /*
@@ -72,7 +75,7 @@ int ssh_socket_init(void) {
  * \internal
  * \brief creates a new Socket object
  */
-struct socket *ssh_socket_new(SSH_SESSION *session) {
+struct socket *ssh_socket_new(ssh_session session) {
   struct socket *s;
 
   s = malloc(sizeof(struct socket));
@@ -182,7 +185,7 @@ int ssh_socket_is_open(struct socket *s) {
 /* \internal
  * \brief read len bytes from socket into buffer
  */
-static int ssh_socket_unbuffered_read(struct socket *s, void *buffer, u32 len) {
+static int ssh_socket_unbuffered_read(struct socket *s, void *buffer, uint32_t len) {
   int rc = -1;
 
   if (s->data_except) {
@@ -208,7 +211,7 @@ static int ssh_socket_unbuffered_read(struct socket *s, void *buffer, u32 len) {
  * \brief writes len bytes from buffer to socket
  */
 static int ssh_socket_unbuffered_write(struct socket *s, const void *buffer,
-    u32 len) {
+    uint32_t len) {
   int w = -1;
 
   if (s->data_except) {
@@ -256,15 +259,15 @@ void ssh_socket_fd_set(struct socket *s, fd_set *set, int *fd_max) {
 /** \internal
  * \brief reads blocking until len bytes have been read
  */
-int ssh_socket_completeread(struct socket *s, void *buffer, u32 len) {
+int ssh_socket_completeread(struct socket *s, void *buffer, uint32_t len) {
   int r = -1;
-  u32 total = 0;
-  u32 toread = len;
+  uint32_t total = 0;
+  uint32_t toread = len;
   if(! ssh_socket_is_open(s)) {
     return SSH_ERROR;
   }
 
-  while((r = ssh_socket_unbuffered_read(s, buffer + total, toread))) {
+  while((r = ssh_socket_unbuffered_read(s, ((uint8_t*)buffer + total), toread))) {
     if (r < 0) {
       return SSH_ERROR;
     }
@@ -285,8 +288,8 @@ int ssh_socket_completeread(struct socket *s, void *buffer, u32 len) {
 /** \internal
  * \brief Blocking write of len bytes
  */
-int ssh_socket_completewrite(struct socket *s, const void *buffer, u32 len) {
-  SSH_SESSION *session = s->session;
+int ssh_socket_completewrite(struct socket *s, const void *buffer, uint32_t len) {
+  ssh_session session = s->session;
   int written = -1;
 
   enter_function();
@@ -303,7 +306,7 @@ int ssh_socket_completewrite(struct socket *s, const void *buffer, u32 len) {
       return SSH_ERROR;
     }
     len -= written;
-    buffer += written;
+    buffer = ((uint8_t*)buffer +  written);
   }
 
   leave_function();
@@ -316,7 +319,7 @@ int ssh_socket_completewrite(struct socket *s, const void *buffer, u32 len) {
  * \returns SSH_AGAIN in nonblocking mode
  */
 int ssh_socket_read(struct socket *s, void *buffer, int len){
-  SSH_SESSION *session = s->session;
+  ssh_session session = s->session;
   int rc = SSH_ERROR;
 
   enter_function();
@@ -341,7 +344,7 @@ int ssh_socket_read(struct socket *s, void *buffer, int len){
  * \warning has no effect on socket before a flush
  */
 int ssh_socket_write(struct socket *s, const void *buffer, int len) {
-  SSH_SESSION *session = s->session;
+  ssh_session session = s->session;
   int rc = SSH_ERROR;
 
   enter_function();
@@ -370,7 +373,7 @@ int ssh_socket_write(struct socket *s, const void *buffer, int len) {
  * \returns SSH_AGAIN need to call later for data
  * \returns SSH_ERROR error happened
  */
-int ssh_socket_wait_for_data(struct socket *s, SSH_SESSION *session, u32 len) {
+int ssh_socket_wait_for_data(struct socket *s, ssh_session session, uint32_t len) {
   char buffer[4096] = {0};
   char *buf = NULL;
   int except;
@@ -446,7 +449,7 @@ int ssh_socket_wait_for_data(struct socket *s, SSH_SESSION *session, u32 len) {
       return SSH_ERROR;
     }
 
-    if (buffer_add_data(s->in_buffer,buffer, (u32) r) < 0) {
+    if (buffer_add_data(s->in_buffer,buffer, (uint32_t) r) < 0) {
       leave_function();
       return SSH_ERROR;
     }
@@ -458,8 +461,8 @@ int ssh_socket_wait_for_data(struct socket *s, SSH_SESSION *session, u32 len) {
 
 /* ssh_socket_poll */
 int ssh_socket_poll(struct socket *s, int *writeable, int *except) {
-  SSH_SESSION *session = s->session;
-  pollfd_t fd[1];
+  ssh_session session = s->session;
+  ssh_pollfd_t fd[1];
   int rc = -1;
 
   enter_function();
@@ -509,7 +512,7 @@ int ssh_socket_poll(struct socket *s, int *writeable, int *except) {
  * \brief nonblocking flush of the output buffer
  */
 int ssh_socket_nonblocking_flush(struct socket *s) {
-  SSH_SESSION *session = s->session;
+  ssh_session session = s->session;
   int except;
   int can_write;
   int w;
@@ -578,7 +581,7 @@ int ssh_socket_nonblocking_flush(struct socket *s) {
  * \brief locking flush of the output packet buffer
  */
 int ssh_socket_blocking_flush(struct socket *s) {
-  SSH_SESSION *session = s->session;
+  ssh_session session = s->session;
 
   enter_function();
 

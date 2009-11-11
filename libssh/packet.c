@@ -21,9 +21,10 @@
  * MA 02111-1307, USA.
  */
 
+#include "config.h"
+
 #include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 
@@ -31,11 +32,16 @@
 #include <arpa/inet.h>
 #endif
 
-#include "config.h"
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
 #include "libssh/ssh1.h"
 #include "libssh/crypto.h"
+#include "libssh/buffer.h"
+#include "libssh/packet.h"
+#include "libssh/socket.h"
+#include "libssh/channels.h"
+#include "libssh/session.h"
+#include "libssh/messages.h"
 
 /* XXX include selected mac size */
 static int macsize=SHA_DIGEST_LEN;
@@ -48,7 +54,7 @@ static int macsize=SHA_DIGEST_LEN;
 #define PACKET_STATE_INIT 0
 #define PACKET_STATE_SIZEREAD 1
 
-static int packet_read2(SSH_SESSION *session) {
+static int packet_read2(ssh_session session) {
   unsigned int blocksize = (session->current_crypto ?
       session->current_crypto->in_cipher->blocksize : 8);
   int current_macsize = session->current_crypto ? macsize : 0;
@@ -58,8 +64,8 @@ static int packet_read2(SSH_SESSION *session) {
   int to_be_read;
   int rc = SSH_ERROR;
 
-  u32 len;
-  u8 padding;
+  uint32_t len;
+  uint8_t padding;
 
   enter_function();
 
@@ -103,7 +109,7 @@ static int packet_read2(SSH_SESSION *session) {
         goto error;
       }
 
-      to_be_read = len - blocksize + sizeof(u32);
+      to_be_read = len - blocksize + sizeof(uint32_t);
       if (to_be_read < 0) {
         /* remote sshd sends invalid sizes? */
         ssh_set_error(session, SSH_FATAL,
@@ -116,7 +122,7 @@ static int packet_read2(SSH_SESSION *session) {
       session->packet_state = PACKET_STATE_SIZEREAD;
     case PACKET_STATE_SIZEREAD:
       len = session->in_packet.len;
-      to_be_read = len - blocksize + sizeof(u32) + current_macsize;
+      to_be_read = len - blocksize + sizeof(uint32_t) + current_macsize;
       /* if to_be_read is zero, the whole packet was blocksize bytes. */
       if (to_be_read != 0) {
         rc = ssh_socket_wait_for_data(session->socket,session,to_be_read);
@@ -148,7 +154,7 @@ static int packet_read2(SSH_SESSION *session) {
          * have been decrypted)
          */
         if (packet_decrypt(session,
-              buffer_get(session->in_buffer) + blocksize,
+              ((uint8_t*)buffer_get(session->in_buffer) + blocksize),
               buffer_get_len(session->in_buffer) - blocksize) < 0) {
           ssh_set_error(session, SSH_FATAL, "Decrypt error");
           goto error;
@@ -161,7 +167,7 @@ static int packet_read2(SSH_SESSION *session) {
         }
       }
 
-      buffer_pass_bytes(session->in_buffer, sizeof(u32));
+      buffer_pass_bytes(session->in_buffer, sizeof(uint32_t));
 
       /* pass the size which has been processed before */
       if (buffer_get_u8(session->in_buffer, &padding) == 0) {
@@ -169,7 +175,7 @@ static int packet_read2(SSH_SESSION *session) {
         goto error;
       }
 
-      ssh_log(session, SSH_LOG_RARE,
+      ssh_log(session, SSH_LOG_PACKET,
           "%hhd bytes padding, %d bytes left in buffer",
           padding, buffer_get_rest_len(session->in_buffer));
 
@@ -187,13 +193,13 @@ static int packet_read2(SSH_SESSION *session) {
       }
       buffer_pass_bytes_end(session->in_buffer, padding);
 
-      ssh_log(session, SSH_LOG_RARE,
+      ssh_log(session, SSH_LOG_PACKET,
           "After padding, %d bytes left in buffer",
           buffer_get_rest_len(session->in_buffer));
 #if defined(HAVE_LIBZ) && defined(WITH_LIBZ)
       if (session->current_crypto && session->current_crypto->do_compress_in) {
-        ssh_log(session, SSH_LOG_RARE, "Decompressing in_buffer ...");
-        if (decompress_buffer(session, session->in_buffer) < 0) {
+        ssh_log(session, SSH_LOG_PACKET, "Decompressing in_buffer ...");
+        if (decompress_buffer(session, session->in_buffer, MAX_PACKET_LEN) < 0) {
           goto error;
         }
       }
@@ -216,13 +222,13 @@ error:
 
 #ifdef WITH_SSH1
 /* a slighty modified packet_read2() for SSH-1 protocol */
-static int packet_read1(SSH_SESSION *session) {
+static int packet_read1(ssh_session session) {
   void *packet = NULL;
   int rc = SSH_ERROR;
   int to_be_read;
-  u32 padding;
-  u32 crc;
-  u32 len;
+  uint32_t padding;
+  uint32_t crc;
+  uint32_t len;
 
   enter_function();
 
@@ -245,7 +251,7 @@ static int packet_read1(SSH_SESSION *session) {
         }
       }
 
-      rc = ssh_socket_read(session->socket, &len, sizeof(u32));
+      rc = ssh_socket_read(session->socket, &len, sizeof(uint32_t));
       if (rc != SSH_OK) {
         goto error;
       }
@@ -312,29 +318,29 @@ static int packet_read1(SSH_SESSION *session) {
 #endif
       ssh_log(session, SSH_LOG_PACKET, "%d bytes padding", padding);
       if(((len + padding) != buffer_get_rest_len(session->in_buffer)) ||
-          ((len + padding) < sizeof(u32))) {
+          ((len + padding) < sizeof(uint32_t))) {
         ssh_log(session, SSH_LOG_RARE, "no crc32 in packet");
         ssh_set_error(session, SSH_FATAL, "no crc32 in packet");
         goto error;
       }
 
       memcpy(&crc,
-          buffer_get_rest(session->in_buffer) + (len+padding) - sizeof(u32),
-          sizeof(u32));
-      buffer_pass_bytes_end(session->in_buffer, sizeof(u32));
+          (unsigned char *)buffer_get_rest(session->in_buffer) + (len+padding) - sizeof(uint32_t),
+          sizeof(uint32_t));
+      buffer_pass_bytes_end(session->in_buffer, sizeof(uint32_t));
       crc = ntohl(crc);
       if (ssh_crc32(buffer_get_rest(session->in_buffer),
-            (len + padding) - sizeof(u32)) != crc) {
+            (len + padding) - sizeof(uint32_t)) != crc) {
 #ifdef DEBUG_CRYPTO
         ssh_print_hexa("crc32 on",buffer_get_rest(session->in_buffer),
-            len + padding - sizeof(u32));
+            len + padding - sizeof(uint32_t));
 #endif
         ssh_log(session, SSH_LOG_RARE, "Invalid crc32");
         ssh_set_error(session, SSH_FATAL,
             "Invalid crc32: expected %.8x, got %.8x",
             crc,
             ssh_crc32(buffer_get_rest(session->in_buffer),
-              len + padding - sizeof(u32)));
+              len + padding - sizeof(uint32_t)));
         goto error;
       }
       /* pass the padding */
@@ -366,7 +372,7 @@ error:
 #endif /* WITH_SSH1 */
 
 /* that's where i'd like C to be object ... */
-int packet_read(SSH_SESSION *session) {
+int packet_read(ssh_session session) {
 #ifdef WITH_SSH1
   if (session->version == 1) {
     return packet_read1(session);
@@ -375,7 +381,7 @@ int packet_read(SSH_SESSION *session) {
   return packet_read2(session);
 }
 
-int packet_translate(SSH_SESSION *session) {
+int packet_translate(ssh_session session) {
   enter_function();
 
   memset(&session->in_packet, 0, sizeof(PACKET));
@@ -384,7 +390,7 @@ int packet_translate(SSH_SESSION *session) {
     return SSH_ERROR;
   }
 
-  ssh_log(session, SSH_LOG_RARE, "Final size %d",
+  ssh_log(session, SSH_LOG_PACKET, "Final size %d",
       buffer_get_rest_len(session->in_buffer));
 
   if(buffer_get_u8(session->in_buffer, &session->in_packet.type) == 0) {
@@ -393,7 +399,7 @@ int packet_translate(SSH_SESSION *session) {
     return SSH_ERROR;
   }
 
-  ssh_log(session, SSH_LOG_RARE, "Type %hhd", session->in_packet.type);
+  ssh_log(session, SSH_LOG_PACKET, "Type %hhd", session->in_packet.type);
   session->in_packet.valid = 1;
 
   leave_function();
@@ -406,7 +412,7 @@ int packet_translate(SSH_SESSION *session) {
  * Return SSH_OK if everything has been sent, SSH_AGAIN if there are still
  * things to send on buffer, SSH_ERROR if there is an error.
  */
-int packet_flush(SSH_SESSION *session, int enforce_blocking) {
+int packet_flush(ssh_session session, int enforce_blocking) {
   if (enforce_blocking || session->blocking) {
     return ssh_socket_blocking_flush(session->socket);
   }
@@ -418,7 +424,7 @@ int packet_flush(SSH_SESSION *session, int enforce_blocking) {
  * This function places the outgoing packet buffer into an outgoing
  * socket buffer
  */
-static int packet_write(SSH_SESSION *session) {
+static int packet_write(ssh_session session) {
   int rc = SSH_ERROR;
 
   enter_function();
@@ -433,24 +439,24 @@ static int packet_write(SSH_SESSION *session) {
   return rc;
 }
 
-static int packet_send2(SSH_SESSION *session) {
+static int packet_send2(ssh_session session) {
   unsigned int blocksize = (session->current_crypto ?
       session->current_crypto->out_cipher->blocksize : 8);
-  u32 currentlen = buffer_get_len(session->out_buffer);
+  uint32_t currentlen = buffer_get_len(session->out_buffer);
   unsigned char *hmac = NULL;
   char padstring[32] = {0};
   int rc = SSH_ERROR;
-  u32 finallen;
-  u8 padding;
+  uint32_t finallen;
+  uint8_t padding;
 
   enter_function();
 
-  ssh_log(session, SSH_LOG_RARE,
+  ssh_log(session, SSH_LOG_PACKET,
       "Writing on the wire a packet having %u bytes before", currentlen);
 
 #if defined(HAVE_LIBZ) && defined(WITH_LIBZ)
   if (session->current_crypto && session->current_crypto->do_compress_out) {
-    ssh_log(session, SSH_LOG_RARE, "Compressing in_buffer ...");
+    ssh_log(session, SSH_LOG_PACKET, "Compressing in_buffer ...");
     if (compress_buffer(session,session->out_buffer) < 0) {
       goto error;
     }
@@ -469,14 +475,14 @@ static int packet_send2(SSH_SESSION *session) {
   }
 
   finallen = htonl(currentlen + padding + 1);
-  ssh_log(session, SSH_LOG_RARE,
+  ssh_log(session, SSH_LOG_PACKET,
       "%d bytes after comp + %d padding bytes = %lu bytes packet",
       currentlen, padding, (long unsigned int) ntohl(finallen));
 
-  if (buffer_prepend_data(session->out_buffer, &padding, sizeof(u8)) < 0) {
+  if (buffer_prepend_data(session->out_buffer, &padding, sizeof(uint8_t)) < 0) {
     goto error;
   }
-  if (buffer_prepend_data(session->out_buffer, &finallen, sizeof(u32)) < 0) {
+  if (buffer_prepend_data(session->out_buffer, &finallen, sizeof(uint32_t)) < 0) {
     goto error;
   }
   if (buffer_add_data(session->out_buffer, padstring, padding) < 0) {
@@ -502,16 +508,16 @@ error:
   return rc; /* SSH_OK, AGAIN or ERROR */
 }
 
-#ifdef HAVE_SSH1
-static int packet_send1(SSH_SESSION *session) {
+#ifdef WITH_SSH1
+static int packet_send1(ssh_session session) {
   unsigned int blocksize = (session->current_crypto ?
       session->current_crypto->out_cipher->blocksize : 8);
-  u32 currentlen = buffer_get_len(session->out_buffer) + sizeof(u32);
+  uint32_t currentlen = buffer_get_len(session->out_buffer) + sizeof(uint32_t);
   char padstring[32] = {0};
   int rc = SSH_ERROR;
-  u32 finallen;
-  u32 crc;
-  u8 padding;
+  uint32_t finallen;
+  uint32_t crc;
+  uint8_t padding;
 
   enter_function();
   ssh_log(session,SSH_LOG_PACKET,"Sending a %d bytes long packet",currentlen);
@@ -541,12 +547,12 @@ static int packet_send1(SSH_SESSION *session) {
   if (buffer_prepend_data(session->out_buffer, &padstring, padding) < 0) {
     goto error;
   }
-  if (buffer_prepend_data(session->out_buffer, &finallen, sizeof(u32)) < 0) {
+  if (buffer_prepend_data(session->out_buffer, &finallen, sizeof(uint32_t)) < 0) {
     goto error;
   }
 
-  crc = ssh_crc32(buffer_get(session->out_buffer) + sizeof(u32),
-      buffer_get_len(session->out_buffer) - sizeof(u32));
+  crc = ssh_crc32((char *)buffer_get(session->out_buffer) + sizeof(uint32_t),
+      buffer_get_len(session->out_buffer) - sizeof(uint32_t));
 
   if (buffer_add_u32(session->out_buffer, ntohl(crc)) < 0) {
     goto error;
@@ -557,8 +563,8 @@ static int packet_send1(SSH_SESSION *session) {
       buffer_get_len(session->out_buffer));
 #endif
 
-  packet_encrypt(session, buffer_get(session->out_buffer) + sizeof(u32),
-      buffer_get_len(session->out_buffer) - sizeof(u32));
+  packet_encrypt(session, (unsigned char *)buffer_get(session->out_buffer) + sizeof(uint32_t),
+      buffer_get_len(session->out_buffer) - sizeof(uint32_t));
 
 #ifdef DEBUG_CRYPTO
   ssh_print_hexa("encrypted packet",buffer_get(session->out_buffer),
@@ -582,8 +588,8 @@ error:
 
 #endif /* WITH_SSH1 */
 
-int packet_send(SSH_SESSION *session) {
-#ifdef HAVE_SSH1
+int packet_send(ssh_session session) {
+#ifdef WITH_SSH1
   if (session->version == 1) {
     return packet_send1(session);
   }
@@ -591,11 +597,11 @@ int packet_send(SSH_SESSION *session) {
   return packet_send2(session);
 }
 
-void packet_parse(SSH_SESSION *session) {
-  STRING *error_s = NULL;
+void packet_parse(ssh_session session) {
+  ssh_string error_s = NULL;
   char *error = NULL;
-  int type = session->in_packet.type;
-  u32 tmp;
+  uint32_t type = session->in_packet.type;
+  uint32_t tmp;
 
 #ifdef WITH_SSH1
   if (session->version == 1) {
@@ -652,8 +658,14 @@ void packet_parse(SSH_SESSION *session) {
       case SSH2_MSG_CHANNEL_EOF:
       case SSH2_MSG_CHANNEL_CLOSE:
         channel_handle(session,type);
+        return;
       case SSH2_MSG_IGNORE:
       case SSH2_MSG_DEBUG:
+        return;
+      case SSH2_MSG_SERVICE_REQUEST:
+      case SSH2_MSG_USERAUTH_REQUEST:
+      case SSH2_MSG_CHANNEL_OPEN:
+        message_handle(session,type);
         return;
       default:
         ssh_log(session, SSH_LOG_RARE, "Received unhandled packet %d", type);
@@ -664,7 +676,7 @@ void packet_parse(SSH_SESSION *session) {
 }
 
 #ifdef WITH_SSH1
-static int packet_wait1(SSH_SESSION *session, int type, int blocking) {
+static int packet_wait1(ssh_session session, int type, int blocking) {
 
   enter_function();
 
@@ -721,7 +733,7 @@ static int packet_wait1(SSH_SESSION *session, int type, int blocking) {
 }
 #endif /* WITH_SSH1 */
 
-static int packet_wait2(SSH_SESSION *session, int type, int blocking) {
+static int packet_wait2(ssh_session session, int type, int blocking) {
   int rc = SSH_ERROR;
 
   enter_function();
@@ -747,9 +759,13 @@ static int packet_wait2(SSH_SESSION *session, int type, int blocking) {
       case SSH2_MSG_CHANNEL_REQUEST:
       case SSH2_MSG_CHANNEL_EOF:
       case SSH2_MSG_CHANNEL_CLOSE:
+      case SSH2_MSG_SERVICE_REQUEST:
+      case SSH2_MSG_USERAUTH_REQUEST:
+      case SSH2_MSG_CHANNEL_OPEN:
         packet_parse(session);
         break;
       case SSH2_MSG_IGNORE:
+      case SSH2_MSG_DEBUG:
         break;
       default:
         if (type && (type != session->in_packet.type)) {
@@ -772,7 +788,7 @@ static int packet_wait2(SSH_SESSION *session, int type, int blocking) {
   return SSH_OK;
 }
 
-int packet_wait(SSH_SESSION *session, int type, int block) {
+int packet_wait(ssh_session session, int type, int block) {
 #ifdef WITH_SSH1
   if (session->version == 1) {
     return packet_wait1(session, type, block);

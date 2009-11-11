@@ -1,7 +1,7 @@
 /*
  * This file is part of the SSH Library
  *
- * Copyright (c) 2003-2008 by Aris Adamantiadis
+ * Copyright (c) 2003-2009 by Aris Adamantiadis
  *
  * The SSH Library is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -22,22 +22,49 @@
 #ifndef _LIBSSH_H
 #define _LIBSSH_H
 
-#ifndef _MSC_VER
-#include <unistd.h>
-#include <inttypes.h>
+#ifdef LIBSSH_STATIC
+  #define LIBSSH_API
+#else
+  #if defined _WIN32 || defined __CYGWIN__
+    #ifdef LIBSSH_EXPORTS
+      #ifdef __GNUC__
+        #define LIBSSH_API __attribute__((dllexport))
+      #else
+        #define LIBSSH_API __declspec(dllexport)
+      #endif
+    #else
+      #ifdef __GNUC__
+        #define LIBSSH_API __attribute__((dllimport))
+      #else
+        #define LIBSSH_API __declspec(dllimport)
+      #endif
+    #endif
+  #else
+    #if __GNUC__ >= 4
+      #define LIBSSH_API __attribute__((visibility("default")))
+    #else
+      #define LIBSSH_API
+    #endif
+  #endif
+#endif
+
+#ifdef _MSC_VER
+  /* Visual Studio hasn't inttypes.h so it doesn't know uint32_t */
+  typedef unsigned int uint32_t;
+  typedef unsigned short uint16_t;
+  typedef unsigned char uint8_t;
+  typedef unsigned long long uint64_t;
+  typedef uint32_t mode_t;
 #else /* _MSC_VER */
-//visual studio hasn't inttypes.h so it doesn't know uint32_t
-typedef unsigned int uint32_t;
-typedef unsigned short uint16_t;
-typedef unsigned char uint8_t;
-typedef unsigned long long uint64_t;
+  #include <unistd.h>
+  #include <inttypes.h>
 #endif /* _MSC_VER */
 
 #ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <sys/select.h> /* for fd_set * */
-#include <netdb.h>
+  #include <winsock2.h>
+#else /* _WIN32 */
+ #include <sys/select.h> /* for fd_set * */
+ #include <netdb.h>
 #endif /* _WIN32 */
 
 #define SSH_STRINGIFY(s) SSH_TOSTRING(s)
@@ -50,8 +77,8 @@ typedef unsigned long long uint64_t;
 
 /* libssh version */
 #define LIBSSH_VERSION_MAJOR  0
-#define LIBSSH_VERSION_MINOR  3
-#define LIBSSH_VERSION_MICRO  4
+#define LIBSSH_VERSION_MINOR  4
+#define LIBSSH_VERSION_MICRO  0
 
 #define LIBSSH_VERSION_INT SSH_VERSION_INT(LIBSSH_VERSION_MAJOR, \
                                            LIBSSH_VERSION_MINOR, \
@@ -67,25 +94,26 @@ typedef unsigned long long uint64_t;
 #define PRINTF_ATTRIBUTE(a,b)
 #endif /* __GNUC__ */
 
+#ifdef __GNUC__
+#define SSH_DEPRECATED __attribute__ ((deprecated))
+#else
+#define SSH_DEPRECATED
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct string_struct STRING;
-typedef struct buffer_struct BUFFER;
-typedef struct public_key_struct PUBLIC_KEY;
-typedef struct private_key_struct PRIVATE_KEY;
-typedef struct ssh_options_struct SSH_OPTIONS;
-typedef struct channel_struct CHANNEL;
-typedef struct agent_struct AGENT;
-typedef struct ssh_session SSH_SESSION;
-typedef struct ssh_kbdint SSH_KBDINT;
 
-/* integer values */
-typedef uint32_t u32;
-typedef uint16_t u16;
-typedef uint64_t u64;
-typedef uint8_t u8;
+typedef struct ssh_agent_struct* ssh_agent;
+typedef struct ssh_buffer_struct* ssh_buffer;
+typedef struct ssh_channel_struct* ssh_channel;
+typedef struct ssh_message_struct* ssh_message;
+typedef struct ssh_private_key_struct* ssh_private_key;
+typedef struct ssh_public_key_struct* ssh_public_key;
+typedef struct ssh_scp_struct* ssh_scp;
+typedef struct ssh_session_struct* ssh_session;
+typedef struct ssh_string_struct* ssh_string;
 
 /* Socket type */
 #ifdef _WIN32
@@ -95,55 +123,92 @@ typedef int socket_t;
 #endif
 
 /* the offsets of methods */
-#define SSH_KEX 0
-#define SSH_HOSTKEYS 1
-#define SSH_CRYPT_C_S 2
-#define SSH_CRYPT_S_C 3
-#define SSH_MAC_C_S 4
-#define SSH_MAC_S_C 5
-#define SSH_COMP_C_S 6
-#define SSH_COMP_S_C 7
-#define SSH_LANG_C_S 8
-#define SSH_LANG_S_C 9
+enum ssh_kex_types_e {
+	SSH_KEX=0,
+	SSH_HOSTKEYS,
+	SSH_CRYPT_C_S,
+	SSH_CRYPT_S_C,
+	SSH_MAC_C_S,
+	SSH_MAC_S_C,
+	SSH_COMP_C_S,
+	SSH_COMP_S_C,
+	SSH_LANG_C_S,
+	SSH_LANG_S_C
+};
 
 #define SSH_CRYPT 2
 #define SSH_MAC 3
 #define SSH_COMP 4
 #define SSH_LANG 5
 
-#define SSH_AUTH_SUCCESS 0
-#define SSH_AUTH_DENIED 1
-#define SSH_AUTH_PARTIAL 2
-#define SSH_AUTH_INFO 3
-#define SSH_AUTH_ERROR -1
+enum ssh_auth_e {
+	SSH_AUTH_SUCCESS=0,
+	SSH_AUTH_DENIED,
+	SSH_AUTH_PARTIAL,
+	SSH_AUTH_INFO,
+	SSH_AUTH_ERROR=-1
+};
 
-#define SSH_AUTH_METHOD_PASSWORD 0x0001
-#define SSH_AUTH_METHOD_PUBLICKEY 0x0002
-#define SSH_AUTH_METHOD_HOSTBASED 0x0004
-#define SSH_AUTH_METHOD_INTERACTIVE 0x0008
+/* auth flags */
+#define SSH_AUTH_METHOD_UNKNOWN 0
+#define SSH_AUTH_METHOD_NONE 0x0001
+#define SSH_AUTH_METHOD_PASSWORD 0x0002
+#define SSH_AUTH_METHOD_PUBLICKEY 0x0004
+#define SSH_AUTH_METHOD_HOSTBASED 0x0008
+#define SSH_AUTH_METHOD_INTERACTIVE 0x0010
+
+/* messages */
+enum ssh_requests_e {
+	SSH_REQUEST_AUTH=1,
+	SSH_REQUEST_CHANNEL_OPEN,
+	SSH_REQUEST_CHANNEL,
+	SSH_REQUEST_SERVICE,
+	SSH_REQUEST_GLOBAL,
+};
+
+enum ssh_channel_type_e {
+	SSH_CHANNEL_UNKNOWN=0,
+	SSH_CHANNEL_SESSION,
+	SSH_CHANNEL_DIRECT_TCPIP,
+	SSH_CHANNEL_FORWARDED_TCPIP,
+	SSH_CHANNEL_X11
+};
+
+enum ssh_channel_requests_e {
+	SSH_CHANNEL_REQUEST_UNKNOWN=0,
+	SSH_CHANNEL_REQUEST_PTY,
+	SSH_CHANNEL_REQUEST_EXEC,
+	SSH_CHANNEL_REQUEST_SHELL,
+	SSH_CHANNEL_REQUEST_ENV,
+	SSH_CHANNEL_REQUEST_SUBSYSTEM,
+	SSH_CHANNEL_REQUEST_WINDOW_CHANGE,
+};
 
 /* status flags */
+#define SSH_CLOSED 0x01
+#define SSH_READ_PENDING 0x02
+#define SSH_CLOSED_ERROR 0x04
 
-#define SSH_CLOSED (1<<0)
-#define SSH_READ_PENDING (1<<1)
-#define SSH_CLOSED_ERROR (1<<2)
-
-#define SSH_SERVER_ERROR -1
-#define SSH_SERVER_NOT_KNOWN 0
-#define SSH_SERVER_KNOWN_OK 1
-#define SSH_SERVER_KNOWN_CHANGED 2
-#define SSH_SERVER_FOUND_OTHER 3
-#define SSH_SERVER_FILE_NOT_FOUND 4
+enum ssh_server_known_e {
+	SSH_SERVER_ERROR=-1,
+	SSH_SERVER_NOT_KNOWN=0,
+	SSH_SERVER_KNOWN_OK,
+	SSH_SERVER_KNOWN_CHANGED,
+	SSH_SERVER_FOUND_OTHER,
+	SSH_SERVER_FILE_NOT_FOUND,
+};
 
 #ifndef MD5_DIGEST_LEN
     #define MD5_DIGEST_LEN 16
 #endif
 /* errors */
 
-#define SSH_NO_ERROR 0
-#define SSH_REQUEST_DENIED 1
-#define SSH_FATAL 2
-#define SSH_EINTR 3
+enum ssh_error_types_e {
+	SSH_NO_ERROR=0,
+	SSH_REQUEST_DENIED,
+	SSH_FATAL,
+	SSH_EINTR
+};
 
 /* Error return codes */
 #define SSH_OK 0     /* No error */
@@ -151,16 +216,10 @@ typedef int socket_t;
 #define SSH_AGAIN -2 /* The nonblocking call must be repeated */
 #define SSH_EOF -127 /* We have already a eof */
 
-const char *ssh_get_error(void *error); 
-int ssh_get_error_code(void *error);
-
-/* version checks */
-const char *ssh_version(int req_version);
-
 /** \addtogroup ssh_log
  * @{
  */
- /** \brief Verbosity level for logging and help to debugging 
+ /** \brief Verbosity level for logging and help to debugging
   */
 
 enum {
@@ -170,217 +229,209 @@ enum {
 	/** Only rare and noteworthy events
 	 */
 	SSH_LOG_RARE,
-	/** High level protocol informations 
+	/** High level protocol informations
 	 */
 	SSH_LOG_PROTOCOL,
 	/** Lower level protocol infomations, packet level
 	 */
-	SSH_LOG_PACKET, 
+	SSH_LOG_PACKET,
 	/** Every function path
 	 */
-	SSH_LOG_FUNCTIONS 
+	SSH_LOG_FUNCTIONS
 };
 /** @}
  */
-/*#define SSH_LOG_NOLOG 0 // no log
-#define SSH_LOG_RARE 1 // rare conditions
-#define SSH_LOG_ENTRY 2 // user-accessible entrypoints
-#define SSH_LOG_PACKET 3 // packet id and size
-#define SSH_LOG_FUNCTIONS 4 // every function in and return
-*/
-/* log.c */
-void ssh_log(SSH_SESSION *session, int prioriry, const char *format, ...) PRINTF_ATTRIBUTE(3, 4);
 
-/* session.c */
-SSH_SESSION *ssh_new(void);
-socket_t ssh_get_fd(SSH_SESSION *session);
-int ssh_get_version(SSH_SESSION *session);
-int ssh_get_status(SSH_SESSION *session);
-const char *ssh_get_disconnect_message(SSH_SESSION *session);
-void ssh_set_options(SSH_SESSION *session, SSH_OPTIONS *options);
-void ssh_set_fd_toread(SSH_SESSION *session);
-void ssh_set_fd_towrite(SSH_SESSION *session);
-void ssh_set_fd_except(SSH_SESSION *session);
-void ssh_set_blocking(SSH_SESSION *session, int blocking);
-void ssh_silent_disconnect(SSH_SESSION *session);
+enum ssh_options_e {
+  SSH_OPTIONS_HOST,
+  SSH_OPTIONS_PORT,
+  SSH_OPTIONS_PORT_STR,
+  SSH_OPTIONS_FD,
+  SSH_OPTIONS_USER,
+  SSH_OPTIONS_SSH_DIR,
+  SSH_OPTIONS_IDENTITY,
+  SSH_OPTIONS_KNOWNHOSTS,
+  SSH_OPTIONS_TIMEOUT,
+  SSH_OPTIONS_TIMEOUT_USEC,
+  SSH_OPTIONS_SSH1,
+  SSH_OPTIONS_SSH2,
+  SSH_OPTIONS_LOG_VERBOSITY,
 
+  SSH_OPTIONS_CIPHERS_C_S,
+  SSH_OPTIONS_CIPHERS_S_C,
+  SSH_OPTIONS_COMPRESSION_C_S,
+  SSH_OPTIONS_COMPRESSION_S_C
+};
 
-/* client.c */
-int ssh_connect(SSH_SESSION *session);
-void ssh_disconnect(SSH_SESSION *session);
-int ssh_service_request(SSH_SESSION *session, const char *service);
-char *ssh_get_issue_banner(SSH_SESSION *session);
-int ssh_get_openssh_version(SSH_SESSION *session);
-/* get copyright informations */
-const char *ssh_copyright(void);
+enum {
+  /** Code is going to write/create remote files */
+  SSH_SCP_WRITE,
+  /** Code is going to read remote files */
+  SSH_SCP_READ,
+  SSH_SCP_RECURSIVE=0x10
+};
 
-/* string.h */
+enum ssh_scp_request_types {
+  /** A new directory is going to be pulled */
+  SSH_SCP_REQUEST_NEWDIR=1,
+  /** A new file is going to be pulled */
+  SSH_SCP_REQUEST_NEWFILE,
+  /** End of requests */
+  SSH_SCP_REQUEST_EOF,
+  /** End of directory */
+  SSH_SCP_REQUEST_ENDDIR,
+  /** Warning received */
+  SSH_SCP_REQUEST_WARNING
+};
 
-/* You can use these functions, they won't change */
-/* string_from_char returns a newly allocated string from a char *ptr */
-STRING *string_from_char(const char *what);
-/* it returns the string len in host byte orders. str->size is big endian warning ! */
-size_t string_len(STRING *str);
-STRING *string_new(size_t size);
-/* string_fill copies the data in the string. */
-int string_fill(STRING *str, const void *data, size_t len);
-/* returns a newly allocated char array with the str string and a final nul caracter */
-char *string_to_char(STRING *str);
-STRING *string_copy(STRING *str);
-/* burns the data inside a string */
-void string_burn(STRING *str);
-void *string_data(STRING *str);
-void string_free(STRING *str);
+LIBSSH_API void buffer_free(ssh_buffer buffer);
+LIBSSH_API void *buffer_get(ssh_buffer buffer);
+LIBSSH_API uint32_t buffer_get_len(ssh_buffer buffer);
+LIBSSH_API ssh_buffer buffer_new(void);
 
-/* useful for debug */
-char *ssh_get_hexa(const unsigned char *what, size_t len);
-void ssh_print_hexa(const char *descr, const unsigned char *what, size_t len);
-int ssh_get_random(void *where,int len,int strong);
-
-/* this one can be called by the client to see the hash of the public key before accepting it */
-int ssh_get_pubkey_hash(SSH_SESSION *session, unsigned char **hash);
-STRING *ssh_get_pubkey(SSH_SESSION *session);
-
-/* in connect.c */
-int ssh_fd_poll(SSH_SESSION *session,int *write, int *except);
-int ssh_select(CHANNEL **channels, CHANNEL **outchannels, socket_t maxfd,
-    fd_set *readfds, struct timeval *timeout);
-
-void publickey_free(PUBLIC_KEY *key);
-
-/* in keyfiles.c */
-
-PRIVATE_KEY *privatekey_from_file(SSH_SESSION *session, const char *filename,
-    int type, const char *passphrase);
-STRING *publickey_to_string(PUBLIC_KEY *key);
-PUBLIC_KEY *publickey_from_privatekey(PRIVATE_KEY *prv);
-void privatekey_free(PRIVATE_KEY *prv);
-STRING *publickey_from_file(SSH_SESSION *session, const char *filename,
-    int *type);
-int ssh_is_server_known(SSH_SESSION *session);
-int ssh_write_knownhost(SSH_SESSION *session);
-
-/* in channels.c */
-
-CHANNEL *channel_new(SSH_SESSION *session);
-int channel_open_forward(CHANNEL *channel, const char *remotehost,
+LIBSSH_API ssh_channel channel_accept_x11(ssh_channel channel, int timeout_ms);
+LIBSSH_API int channel_change_pty_size(ssh_channel channel,int cols,int rows);
+LIBSSH_API ssh_channel channel_forward_accept(ssh_session session, int timeout_ms);
+LIBSSH_API int channel_close(ssh_channel channel);
+LIBSSH_API int channel_forward_cancel(ssh_session session, const char *address, int port);
+LIBSSH_API int channel_forward_listen(ssh_session session, const char *address, int port, int *bound_port);
+LIBSSH_API void channel_free(ssh_channel channel);
+LIBSSH_API int channel_get_exit_status(ssh_channel channel);
+LIBSSH_API ssh_session channel_get_session(ssh_channel channel);
+LIBSSH_API int channel_is_closed(ssh_channel channel);
+LIBSSH_API int channel_is_eof(ssh_channel channel);
+LIBSSH_API int channel_is_open(ssh_channel channel);
+LIBSSH_API ssh_channel channel_new(ssh_session session);
+LIBSSH_API int channel_open_forward(ssh_channel channel, const char *remotehost,
     int remoteport, const char *sourcehost, int localport);
-int channel_open_session(CHANNEL *channel);
-void channel_free(CHANNEL *channel);
-int channel_request_pty(CHANNEL *channel);
-int channel_request_pty_size(CHANNEL *channel, const char *term,
+LIBSSH_API int channel_open_session(ssh_channel channel);
+LIBSSH_API int channel_poll(ssh_channel channel, int is_stderr);
+LIBSSH_API int channel_read(ssh_channel channel, void *dest, uint32_t count, int is_stderr);
+LIBSSH_API int channel_read_buffer(ssh_channel channel, ssh_buffer buffer, uint32_t count,
+    int is_stderr);
+LIBSSH_API int channel_read_nonblocking(ssh_channel channel, void *dest, uint32_t count,
+    int is_stderr);
+LIBSSH_API int channel_request_env(ssh_channel channel, const char *name, const char *value);
+LIBSSH_API int channel_request_exec(ssh_channel channel, const char *cmd);
+LIBSSH_API int channel_request_pty(ssh_channel channel);
+LIBSSH_API int channel_request_pty_size(ssh_channel channel, const char *term,
     int cols, int rows);
-int channel_change_pty_size(CHANNEL *channel,int cols,int rows);
-int channel_request_shell(CHANNEL *channel);
-int channel_request_subsystem(CHANNEL *channel, const char *system);
-int channel_request_env(CHANNEL *channel, const char *name, const char *value);
-int channel_request_exec(CHANNEL *channel, const char *cmd);
-int channel_request_sftp(CHANNEL *channel);
-int channel_write(CHANNEL *channel, const void *data, u32 len);
-int channel_send_eof(CHANNEL *channel);
-int channel_is_eof(CHANNEL *channel);
-int channel_read(CHANNEL *channel, void *dest, u32 count, int is_stderr);
-int channel_read_buffer(CHANNEL *channel, BUFFER *buffer, u32 count,
-    int is_stderr);
-int channel_poll(CHANNEL *channel, int is_stderr);
-int channel_close(CHANNEL *channel);
-void channel_set_blocking(CHANNEL *channel, int blocking);
-int channel_read_nonblocking(CHANNEL *channel, void *dest, u32 count,
-    int is_stderr);
-int channel_is_open(CHANNEL *channel);
-int channel_is_closed(CHANNEL *channel);
-int channel_select(CHANNEL **readchans, CHANNEL **writechans, CHANNEL **exceptchans, struct 
+LIBSSH_API int channel_request_shell(ssh_channel channel);
+LIBSSH_API int channel_request_send_signal(ssh_channel channel, const char *signum);
+LIBSSH_API int channel_request_sftp(ssh_channel channel);
+LIBSSH_API int channel_request_subsystem(ssh_channel channel, const char *subsystem);
+LIBSSH_API int channel_request_x11(ssh_channel channel, int single_connection, const char *protocol,
+    const char *cookie, int screen_number);
+LIBSSH_API int channel_send_eof(ssh_channel channel);
+LIBSSH_API int channel_select(ssh_channel *readchans, ssh_channel *writechans, ssh_channel *exceptchans, struct
         timeval * timeout);
-SSH_SESSION *channel_get_session(CHANNEL *channel);
-int channel_get_exit_status(CHANNEL *channel);
-/* in options.c */
+LIBSSH_API void channel_set_blocking(ssh_channel channel, int blocking);
+LIBSSH_API int channel_write(ssh_channel channel, const void *data, uint32_t len);
 
-/**
- * @brief SSH authentication callback.
- *
- * @param prompt        Prompt to be displayed.
- * @param buf           Buffer to save the password. You should null-terminate it.
- * @param len           Length of the buffer.
- * @param echo          Enable or disable the echo of what you type.
- * @param verify        Should the password be verified?
- * @param userdata      Userdata to be passed to the callback function. Useful
- *                      for GUI applications.
- *
- * @return              0 on success, < 0 on error.
- */
-typedef int (*ssh_auth_callback) (const char *prompt, char *buf, size_t len,
-    int echo, int verify, void *userdata);
+LIBSSH_API void privatekey_free(ssh_private_key prv);
+LIBSSH_API ssh_private_key privatekey_from_file(ssh_session session, const char *filename,
+    int type, const char *passphrase);
+LIBSSH_API void publickey_free(ssh_public_key key);
+LIBSSH_API ssh_string publickey_from_file(ssh_session session, const char *filename,
+    int *type);
+LIBSSH_API ssh_public_key publickey_from_privatekey(ssh_private_key prv);
+LIBSSH_API ssh_string publickey_to_string(ssh_public_key key);
 
-SSH_OPTIONS *ssh_options_new(void);
-SSH_OPTIONS *ssh_options_copy(SSH_OPTIONS *opt);
-void ssh_options_free(SSH_OPTIONS *opt);
-int ssh_options_set_wanted_algos(SSH_OPTIONS *opt, int algo, const char *list);
-int ssh_options_set_username(SSH_OPTIONS *opt, const char *username);
-int ssh_options_set_port(SSH_OPTIONS *opt, unsigned int port);
-int ssh_options_getopt(SSH_OPTIONS *options, int *argcptr, char **argv);
-int ssh_options_set_host(SSH_OPTIONS *opt, const char *host);
-int ssh_options_set_fd(SSH_OPTIONS *opt, socket_t fd);
-int ssh_options_set_bind(SSH_OPTIONS *opt, const char *bindaddr, int port);
-int ssh_options_set_ssh_dir(SSH_OPTIONS *opt, const char *dir);
-int ssh_options_set_known_hosts_file(SSH_OPTIONS *opt, const char *dir);
-int ssh_options_set_identity(SSH_OPTIONS *opt, const char *identity);
-int ssh_options_set_banner(SSH_OPTIONS *opt, const char *banner);
-int ssh_options_set_status_callback(SSH_OPTIONS *opt, void (*callback)
-        (void *arg, float status), void *arg);
-int ssh_options_set_timeout(SSH_OPTIONS *opt, long seconds, long usec);
-int ssh_options_allow_ssh1(SSH_OPTIONS *opt, int allow);
-int ssh_options_allow_ssh2(SSH_OPTIONS *opt, int allow);
-int ssh_options_set_log_function(SSH_OPTIONS *opt,
-    void (*callback)(const char *message, SSH_SESSION *session, int verbosity));
-int ssh_options_set_log_verbosity(SSH_OPTIONS *opt, int verbosity);
-int ssh_options_set_dsa_server_key(SSH_OPTIONS *opt, const char *dsakey);
-int ssh_options_set_rsa_server_key(SSH_OPTIONS *opt, const char *rsakey);
-int ssh_options_set_auth_callback(SSH_OPTIONS *opt, ssh_auth_callback cb,
-    void *userdata);
+LIBSSH_API int ssh_auth_list(ssh_session session);
+LIBSSH_API char *ssh_basename (const char *path);
+LIBSSH_API void ssh_clean_pubkey_hash(unsigned char **hash);
+LIBSSH_API int ssh_connect(ssh_session session);
+LIBSSH_API const char *ssh_copyright(void);
+LIBSSH_API void ssh_disconnect(ssh_session session);
+LIBSSH_API char *ssh_dirname (const char *path);
+LIBSSH_API int ssh_finalize(void);
+LIBSSH_API void ssh_free(ssh_session session);
+LIBSSH_API const char *ssh_get_disconnect_message(ssh_session session);
+LIBSSH_API const char *ssh_get_error(void *error);
+LIBSSH_API int ssh_get_error_code(void *error);
+LIBSSH_API socket_t ssh_get_fd(ssh_session session);
+LIBSSH_API char *ssh_get_hexa(const unsigned char *what, size_t len);
+LIBSSH_API char *ssh_get_issue_banner(ssh_session session);
+LIBSSH_API int ssh_get_openssh_version(ssh_session session);
+LIBSSH_API ssh_string ssh_get_pubkey(ssh_session session);
+LIBSSH_API int ssh_get_pubkey_hash(ssh_session session, unsigned char **hash);
+LIBSSH_API int ssh_get_random(void *where,int len,int strong);
+LIBSSH_API int ssh_get_version(ssh_session session);
+LIBSSH_API int ssh_get_status(ssh_session session);
+LIBSSH_API int ssh_init(void);
+LIBSSH_API int ssh_is_server_known(ssh_session session);
+LIBSSH_API void ssh_log(ssh_session session, int prioriry, const char *format, ...) PRINTF_ATTRIBUTE(3, 4);
+LIBSSH_API ssh_channel ssh_message_channel_request_open_reply_accept(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_reply_success(ssh_message msg);
+LIBSSH_API void ssh_message_free(ssh_message msg);
+LIBSSH_API ssh_message ssh_message_get(ssh_session session);
+LIBSSH_API ssh_message ssh_message_retrieve(ssh_session session, uint32_t packettype);
+LIBSSH_API int ssh_message_subtype(ssh_message msg);
+LIBSSH_API int ssh_message_type(ssh_message msg);
+LIBSSH_API int ssh_mkdir (const char *pathname, mode_t mode);
+LIBSSH_API ssh_session ssh_new(void);
 
+LIBSSH_API int ssh_options_copy(ssh_session src, ssh_session *dest);
+LIBSSH_API int ssh_options_getopt(ssh_session session, int *argcptr, char **argv);
+LIBSSH_API int ssh_options_parse_config(ssh_session session, const char *filename);
+LIBSSH_API int ssh_options_set(ssh_session session, enum ssh_options_e type,
+    const void *value);
 
-/* buffer.c */
-
-/** creates a new buffer 
- */
-BUFFER *buffer_new(void);
-void buffer_free(BUFFER *buffer);
-/* buffer_get returns a pointer to the begining of the buffer. no position is taken into account */
-void *buffer_get(BUFFER *buffer);
-/* same here */
-u32 buffer_get_len(BUFFER *buffer);
-
-
-/* in auth.c */
-int ssh_auth_list(SSH_SESSION *session);
-/* these functions returns AUTH_ERROR is some serious error has happened,
-  AUTH_SUCCESS if success,
-  AUTH_PARTIAL if partial success,
-  AUTH_DENIED if refused */
-int ssh_userauth_list(SSH_SESSION *session, const char *username);
-int ssh_userauth_none(SSH_SESSION *session, const char *username);
-int ssh_userauth_password(SSH_SESSION *session, const char *username, const char *password);
-int ssh_userauth_offer_pubkey(SSH_SESSION *session, const char *username, int type, STRING *publickey);
-int ssh_userauth_pubkey(SSH_SESSION *session, const char *username, STRING *publickey, PRIVATE_KEY *privatekey);
-int ssh_userauth_agent_pubkey(SSH_SESSION *session, const char *username,
-    PUBLIC_KEY *publickey);
-int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase);
-int ssh_userauth_kbdint(SSH_SESSION *session, const char *user, const char *submethods);
-int ssh_userauth_kbdint_getnprompts(SSH_SESSION *session);
-const char *ssh_userauth_kbdint_getname(SSH_SESSION *session);
-const char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session);
-const char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i, char *echo);
-int ssh_userauth_kbdint_setanswer(SSH_SESSION *session, unsigned int i,
+LIBSSH_API void ssh_print_hexa(const char *descr, const unsigned char *what, size_t len);
+LIBSSH_API int ssh_scp_accept_request(ssh_scp scp);
+LIBSSH_API int ssh_scp_close(ssh_scp scp);
+LIBSSH_API int ssh_scp_deny_request(ssh_scp scp, const char *reason);
+LIBSSH_API void ssh_scp_free(ssh_scp scp);
+LIBSSH_API int ssh_scp_init(ssh_scp scp);
+LIBSSH_API int ssh_scp_leave_directory(ssh_scp scp);
+LIBSSH_API ssh_scp ssh_scp_new(ssh_session session, int mode, const char *location);
+LIBSSH_API int ssh_scp_pull_request(ssh_scp scp);
+LIBSSH_API int ssh_scp_push_directory(ssh_scp scp, const char *dirname, int mode);
+LIBSSH_API int ssh_scp_push_file(ssh_scp scp, const char *filename, size_t size, int perms);
+LIBSSH_API int ssh_scp_read(ssh_scp scp, void *buffer, size_t size);
+LIBSSH_API const char *ssh_scp_request_get_filename(ssh_scp scp);
+LIBSSH_API int ssh_scp_request_get_permissions(ssh_scp scp);
+LIBSSH_API size_t ssh_scp_request_get_size(ssh_scp scp);
+LIBSSH_API const char *ssh_scp_request_get_warning(ssh_scp scp);
+LIBSSH_API int ssh_scp_write(ssh_scp scp, const void *buffer, size_t len);
+LIBSSH_API int ssh_select(ssh_channel *channels, ssh_channel *outchannels, socket_t maxfd,
+    fd_set *readfds, struct timeval *timeout);
+LIBSSH_API int ssh_service_request(ssh_session session, const char *service);
+LIBSSH_API void ssh_set_blocking(ssh_session session, int blocking);
+LIBSSH_API void ssh_set_fd_except(ssh_session session);
+LIBSSH_API void ssh_set_fd_toread(ssh_session session);
+LIBSSH_API void ssh_set_fd_towrite(ssh_session session);
+LIBSSH_API void ssh_silent_disconnect(ssh_session session);
+#ifndef _WIN32
+LIBSSH_API int ssh_userauth_agent_pubkey(ssh_session session, const char *username,
+    ssh_public_key publickey);
+#endif
+LIBSSH_API int ssh_userauth_autopubkey(ssh_session session, const char *passphrase);
+LIBSSH_API int ssh_userauth_kbdint(ssh_session session, const char *user, const char *submethods);
+LIBSSH_API const char *ssh_userauth_kbdint_getinstruction(ssh_session session);
+LIBSSH_API const char *ssh_userauth_kbdint_getname(ssh_session session);
+LIBSSH_API int ssh_userauth_kbdint_getnprompts(ssh_session session);
+LIBSSH_API const char *ssh_userauth_kbdint_getprompt(ssh_session session, unsigned int i, char *echo);
+LIBSSH_API int ssh_userauth_kbdint_setanswer(ssh_session session, unsigned int i,
     const char *answer);
+LIBSSH_API int ssh_userauth_list(ssh_session session, const char *username);
+LIBSSH_API int ssh_userauth_none(ssh_session session, const char *username);
+LIBSSH_API int ssh_userauth_offer_pubkey(ssh_session session, const char *username, int type, ssh_string publickey);
+LIBSSH_API int ssh_userauth_password(ssh_session session, const char *username, const char *password);
+LIBSSH_API int ssh_userauth_pubkey(ssh_session session, const char *username, ssh_string publickey, ssh_private_key privatekey);
+LIBSSH_API const char *ssh_version(int req_version);
+LIBSSH_API int ssh_write_knownhost(ssh_session session);
 
-/* misc.c */
-int ssh_mkdir (const char *pathname, mode_t mode);
-char *ssh_dirname (const char *path);
-char *ssh_basename (const char *path);
+LIBSSH_API void string_burn(ssh_string str);
+LIBSSH_API ssh_string string_copy(ssh_string str);
+LIBSSH_API void *string_data(ssh_string str);
+LIBSSH_API int string_fill(ssh_string str, const void *data, size_t len);
+LIBSSH_API void string_free(ssh_string str);
+LIBSSH_API ssh_string string_from_char(const char *what);
+LIBSSH_API size_t string_len(ssh_string str);
+LIBSSH_API ssh_string string_new(size_t size);
+LIBSSH_API char *string_to_char(ssh_string str);
 
-/* init.c */
-int ssh_init(void);
-int ssh_finalize(void);
 
 #ifdef __cplusplus
 }

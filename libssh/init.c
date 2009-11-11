@@ -3,7 +3,7 @@
  *
  * This file is part of the SSH Library
  *
- * Copyright (c) 2003-2006 by Aris Adamantiadis
+ * Copyright (c) 2003-2009 by Aris Adamantiadis
  *
  * The SSH Library is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -21,7 +21,11 @@
  * MA 02111-1307, USA.
  */
 
+#include "config.h"
 #include "libssh/priv.h"
+#include "libssh/socket.h"
+#include "libssh/dh.h"
+
 #ifdef _WIN32
 #include <winsock2.h>
 #endif
@@ -34,7 +38,8 @@
 /**
  * @brief initialize global cryptographic data structures.
  *
- * This function should only be called once, at the begining of the program, in the main thread. It may be omitted if your program is not multithreaded.
+ * This function should only be called once, at the beginning of the program, in
+ * the main thread. It may be omitted if your program is not multithreaded.
  *
  * @returns 0
  */
@@ -42,6 +47,8 @@ int ssh_init(void) {
   if(ssh_crypto_init())
     return -1;
   if(ssh_socket_init())
+    return -1;
+  if(ssh_regex_init())
     return -1;
   return 0;
 }
@@ -56,6 +63,7 @@ int ssh_init(void) {
    @returns 0 otherwise
  */
 int ssh_finalize(void) {
+  ssh_regex_finalize();
   ssh_crypto_finalize();
 #ifdef HAVE_LIBGCRYPT
   gcry_control(GCRYCTL_TERM_SECMEM);
