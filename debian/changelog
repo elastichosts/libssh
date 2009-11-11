@@ -1,8 +1,9 @@
-libssh (0.3.4-4) UNRELEASED; urgency=low
+libssh (0.4.0-1) UNRELEASED; urgency=low
 
+  * New upstream release.
   * Readd static library in -dev package
 
- -- Laurent Bigonville <bigon@debian.org>  Sun, 25 Oct 2009 21:16:14 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 12 Nov 2009 00:50:04 +0100
 
 libssh (0.3.4-3) unstable; urgency=low
 
