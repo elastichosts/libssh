@@ -6,14 +6,14 @@ cmake_minimum_required(VERSION 2.6.0)
 # global needed variables
 set(APPLICATION_NAME ${PROJECT_NAME})
 
-set(APPLICATION_VERSION "0.3.4")
+set(APPLICATION_VERSION "0.4.0")
 
 set(APPLICATION_VERSION_MAJOR "0")
-set(APPLICATION_VERSION_MINOR "3")
-set(APPLICATION_VERSION_PATCH "4")
+set(APPLICATION_VERSION_MINOR "4")
+set(APPLICATION_VERSION_PATCH "0")
 
-set(LIBRARY_VERSION "3.4.0")
-set(LIBRARY_SOVERSION "3")
+set(LIBRARY_VERSION "4.0.0")
+set(LIBRARY_SOVERSION "4")
 
 # where to look first for cmake modules, before ${CMAKE_ROOT}/Modules/ is checked
 set(CMAKE_MODULE_PATH
@@ -38,14 +38,20 @@ include(MacroCopyFile)
 # search for libraries
 find_package(ZLIB REQUIRED)
 
-find_package(OpenSSL)
-
-if (NOT CRYPTO_FOUND)
-  find_package(GCrypt)
+if (WITH_GCRYPT)
+  find_package(GCrypt REQUIRED)
   if (NOT GCRYPT_FOUND)
-    message(FATAL_ERROR "Could not find OpenSSL or GCrypt")
+    message(FATAL_ERROR "Could not find GCrypt")
   endif (NOT GCRYPT_FOUND)
-endif (NOT CRYPTO_FOUND)
+else (WITH_GCRYPT)
+  find_package(OpenSSL)
+  if (NOT CRYPTO_FOUND)
+    find_package(GCrypt)
+    if (NOT GCRYPT_FOUND)
+      message(FATAL_ERROR "Could not find OpenSSL or GCrypt")
+    endif (NOT GCRYPT_FOUND)
+  endif (NOT CRYPTO_FOUND)
+endif(WITH_GCRYPT)
 
 # config.h checks
 include(ConfigureChecks.cmake)
@@ -55,16 +61,12 @@ configure_file(config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 add_subdirectory(doc)
 add_subdirectory(include)
 add_subdirectory(libssh)
+add_subdirectory(tests)
 
 # build samples
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 if (UNIX AND NOT WIN32)
-  if (WITH_SFTP AND WITH_SERVER)
-    add_executable(samplessh sample.c)
-    add_executable(samplesshd samplesshd.c)
+  add_subdirectory(examples)
 
-    target_link_libraries(samplessh ${LIBSSH_SHARED_LIBRARY})
-    target_link_libraries(samplesshd ${LIBSSH_SHARED_LIBRARY})
-  endif (WITH_SFTP AND WITH_SERVER)
 endif (UNIX AND NOT WIN32)

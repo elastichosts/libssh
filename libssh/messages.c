@@ -3,7 +3,7 @@
  *
  * This file is part of the SSH Library
  *
- * Copyright (c) 2003-2005 by Aris Adamantiadis
+ * Copyright (c) 2003-2009 by Aris Adamantiadis
  *
  * The SSH Library is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -41,68 +41,59 @@
 
 #include "libssh/libssh.h"
 #include "libssh/priv.h"
-#include "libssh/server.h"
 #include "libssh/ssh2.h"
+#include "libssh/buffer.h"
+#include "libssh/packet.h"
+#include "libssh/channels.h"
+#include "libssh/session.h"
+#include "libssh/misc.h"
+#include "libssh/keys.h"
+#include "libssh/dh.h"
+#include "libssh/messages.h"
 
-
-static SSH_MESSAGE *message_new(SSH_SESSION *session){
-  SSH_MESSAGE *msg = session->ssh_message;
-
+static ssh_message message_new(ssh_session session){
+  ssh_message msg = malloc(sizeof(struct ssh_message_struct));
   if (msg == NULL) {
-    msg = malloc(sizeof(SSH_MESSAGE));
-    if (msg == NULL) {
-      return NULL;
-    }
-    session->ssh_message = msg;
+    return NULL;
   }
-  memset(msg, 0, sizeof(*msg));
+  ZERO_STRUCTP(msg);
   msg->session = session;
-
   return msg;
 }
 
-static int handle_service_request(SSH_SESSION *session) {
-  STRING *service = NULL;
+static ssh_message handle_service_request(ssh_session session) {
+  ssh_string service = NULL;
   char *service_c = NULL;
-  int rc = -1;
+  ssh_message msg=NULL;
 
   enter_function();
 
   service = buffer_get_ssh_string(session->in_buffer);
   if (service == NULL) {
     ssh_set_error(session, SSH_FATAL, "Invalid SSH_MSG_SERVICE_REQUEST packet");
-    leave_function();
-    return -1;
+    goto error;
   }
 
   service_c = string_to_char(service);
   if (service_c == NULL) {
     goto error;
   }
-
   ssh_log(session, SSH_LOG_PACKET,
-      "Sending a SERVICE_ACCEPT for service %s", service_c);
-  SAFE_FREE(service_c);
-
-  if (buffer_add_u8(session->out_buffer, SSH2_MSG_SERVICE_ACCEPT) < 0) {
+        "Received a SERVICE_REQUEST for service %s", service_c);
+  msg=message_new(session);
+  if(!msg){
+    SAFE_FREE(service_c);
     goto error;
   }
-  if (buffer_add_ssh_string(session->out_buffer, service) < 0) {
-    goto error;
-  }
-  if (packet_send(session) != SSH_OK) {
-    goto error;
-  }
-
-  rc = 0;
-error:
+  msg->type=SSH_REQUEST_SERVICE;
+  msg->service_request.service=service_c;
+  error:
   string_free(service);
   leave_function();
-
-  return rc;
+  return msg;
 }
 
-static int handle_unimplemented(SSH_SESSION *session) {
+static int handle_unimplemented(ssh_session session) {
   if (buffer_add_u32(session->out_buffer, htonl(session->recv_seq - 1)) < 0) {
     return -1;
   }
@@ -114,13 +105,14 @@ static int handle_unimplemented(SSH_SESSION *session) {
   return 0;
 }
 
-static SSH_MESSAGE *handle_userauth_request(SSH_SESSION *session){
-  STRING *user = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
-  SSH_MESSAGE *msg = NULL;
+static ssh_message handle_userauth_request(ssh_session session){
+  ssh_string user = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
+  ssh_message msg = NULL;
   char *service_c = NULL;
   char *method_c = NULL;
+  uint32_t method_size = 0;
 
   enter_function();
 
@@ -142,12 +134,13 @@ static SSH_MESSAGE *handle_userauth_request(SSH_SESSION *session){
     goto error;
   }
 
-  msg->type = SSH_AUTH_REQUEST;
+  msg->type = SSH_REQUEST_AUTH;
   msg->auth_request.username = string_to_char(user);
   if (msg->auth_request.username == NULL) {
     goto error;
   }
   string_free(user);
+  user = NULL;
 
   service_c = string_to_char(service);
   if (service_c == NULL) {
@@ -157,29 +150,33 @@ static SSH_MESSAGE *handle_userauth_request(SSH_SESSION *session){
   if (method_c == NULL) {
     goto error;
   }
+  method_size = string_len(method);
 
   string_free(service);
+  service = NULL;
   string_free(method);
+  method = NULL;
 
   ssh_log(session, SSH_LOG_PACKET,
       "Auth request for service %s, method %s for user '%s'",
       service_c, method_c,
       msg->auth_request.username);
 
-  SAFE_FREE(service_c);
 
-  if (strcmp(method_c, "none") == 0) {
-    msg->auth_request.method = SSH_AUTH_NONE;
+  if (strncmp(method_c, "none", method_size) == 0) {
+    msg->auth_request.method = SSH_AUTH_METHOD_NONE;
+    SAFE_FREE(service_c);
     SAFE_FREE(method_c);
     leave_function();
     return msg;
   }
 
-  if (strcmp(method_c, "password") == 0) {
-    STRING *pass = NULL;
-    u8 tmp;
+  if (strncmp(method_c, "password", method_size) == 0) {
+    ssh_string pass = NULL;
+    uint8_t tmp;
 
-    msg->auth_request.method = SSH_AUTH_PASSWORD;
+    msg->auth_request.method = SSH_AUTH_METHOD_PASSWORD;
+    SAFE_FREE(service_c);
     SAFE_FREE(method_c);
     buffer_get_u8(session->in_buffer, &tmp);
     pass = buffer_get_ssh_string(session->in_buffer);
@@ -187,7 +184,9 @@ static SSH_MESSAGE *handle_userauth_request(SSH_SESSION *session){
       goto error;
     }
     msg->auth_request.password = string_to_char(pass);
+    string_burn(pass);
     string_free(pass);
+    pass = NULL;
     if (msg->auth_request.password == NULL) {
       goto error;
     }
@@ -195,7 +194,83 @@ static SSH_MESSAGE *handle_userauth_request(SSH_SESSION *session){
     return msg;
   }
 
-  msg->auth_request.method = SSH_AUTH_UNKNOWN;
+  if (strncmp(method_c, "publickey", method_size) == 0) {
+    ssh_string algo = NULL;
+    ssh_string publickey = NULL;
+    uint8_t has_sign;
+
+    msg->auth_request.method = SSH_AUTH_METHOD_PUBLICKEY;
+    SAFE_FREE(method_c);
+    buffer_get_u8(session->in_buffer, &has_sign);
+    algo = buffer_get_ssh_string(session->in_buffer);
+    if (algo == NULL) {
+      goto error;
+    }
+    publickey = buffer_get_ssh_string(session->in_buffer);
+    if (publickey == NULL) {
+      string_free(algo);
+      algo = NULL;
+      goto error;
+    }
+    msg->auth_request.public_key = publickey_from_string(session, publickey);
+    string_free(algo);
+    algo = NULL;
+    string_free(publickey);
+    publickey = NULL;
+    if (msg->auth_request.public_key == NULL) {
+       goto error;
+    }
+    msg->auth_request.signature_state = 0;
+    // has a valid signature ?
+    if(has_sign) {
+      SIGNATURE *signature = NULL;
+      ssh_public_key public_key = msg->auth_request.public_key;
+      ssh_string sign = NULL;
+      ssh_buffer digest = NULL;
+
+      sign = buffer_get_ssh_string(session->in_buffer);
+      if(sign == NULL) {
+        ssh_log(session, SSH_LOG_PACKET, "Invalid signature packet from peer");
+        msg->auth_request.signature_state = -2;
+        goto error;
+      }
+      signature = signature_from_string(session, sign, public_key,
+                                                       public_key->type);
+      digest = ssh_userauth_build_digest(session, msg, service_c);
+      if ((digest == NULL || signature == NULL) ||
+          (digest != NULL && signature != NULL &&
+          sig_verify(session, public_key, signature,
+                     buffer_get(digest), buffer_get_len(digest)) < 0)) {
+        ssh_log(session, SSH_LOG_PACKET, "Invalid signature from peer");
+
+        string_free(sign);
+        sign = NULL;
+        buffer_free(digest);
+        digest = NULL;
+        signature_free(signature);
+        signature = NULL;
+
+        msg->auth_request.signature_state = -1;
+        goto error;
+      }         
+      else
+        ssh_log(session, SSH_LOG_PACKET, "Valid signature received");
+
+      buffer_free(digest);
+      digest = NULL;
+      string_free(sign);
+      sign = NULL;
+      signature_free(signature);
+      signature = NULL;
+
+      msg->auth_request.signature_state = 1;
+    }
+    SAFE_FREE(service_c);
+    leave_function();
+    return msg;
+  }
+
+  msg->auth_request.method = SSH_AUTH_METHOD_UNKNOWN;
   SAFE_FREE(method_c);
 
   leave_function();
@@ -214,114 +289,11 @@ error:
   return NULL;
 }
 
-char *ssh_message_auth_user(SSH_MESSAGE *msg) {
-  if (msg == NULL) {
-    return NULL;
-  }
-
-  return msg->auth_request.username;
-}
-
-char *ssh_message_auth_password(SSH_MESSAGE *msg){
-  if (msg == NULL) {
-    return NULL;
-  }
-
-  return msg->auth_request.password;
-}
-
-int ssh_message_auth_set_methods(SSH_MESSAGE *msg, int methods) {
-  if (msg == NULL || msg->session == NULL) {
-    return -1;
-  }
-
-  msg->session->auth_methods = methods;
-
-  return 0;
-}
-
-static int ssh_message_auth_reply_default(SSH_MESSAGE *msg,int partial) {
-  SSH_SESSION *session = msg->session;
-  char methods_c[128] = {0};
-  STRING *methods = NULL;
-  int rc = SSH_ERROR;
-
-  enter_function();
-
-  if (buffer_add_u8(session->out_buffer, SSH2_MSG_USERAUTH_FAILURE) < 0) {
-    return rc;
-  }
-
-  if (session->auth_methods == 0) {
-    session->auth_methods = SSH_AUTH_PUBLICKEY | SSH_AUTH_PASSWORD;
-  }
-  if (session->auth_methods & SSH_AUTH_PUBLICKEY) {
-    strcat(methods_c, "publickey,");
-  }
-  if (session->auth_methods & SSH_AUTH_KEYBINT) {
-    strcat(methods_c, "keyboard-interactive,");
-  }
-  if (session->auth_methods & SSH_AUTH_PASSWORD) {
-    strcat(methods_c, "password,");
-  }
-  if (session->auth_methods & SSH_AUTH_HOSTBASED) {
-    strcat(methods_c, "hostbased,");
-  }
-
-  /* Strip the comma. */
-  methods_c[strlen(methods_c) - 1] = '\0'; // strip the comma. We are sure there is at
-
-  ssh_log(session, SSH_LOG_PACKET,
-      "Sending a auth failure. methods that can continue: %s", methods_c);
-
-  methods = string_from_char(methods_c);
-  if (methods == NULL) {
-    goto error;
-  }
-
-  if (buffer_add_ssh_string(msg->session->out_buffer, methods) < 0) {
-    goto error;
-  }
-
-  if (partial) {
-    if (buffer_add_u8(session->out_buffer, 1) < 0) {
-      goto error;
-    }
-  } else {
-    if (buffer_add_u8(session->out_buffer, 0) < 0) {
-      goto error;
-    }
-  }
-
-  rc = packet_send(msg->session);
-error:
-  string_free(methods);
-
-  leave_function();
-  return rc;
-}
-
-int ssh_message_auth_reply_success(SSH_MESSAGE *msg, int partial) {
-  if (msg == NULL) {
-    return SSH_ERROR;
-  }
-
-  if (partial) {
-    return ssh_message_auth_reply_default(msg, partial);
-  }
-
-  if (buffer_add_u8(msg->session->out_buffer,SSH2_MSG_USERAUTH_SUCCESS) < 0) {
-    return SSH_ERROR;
-  }
-
-  return packet_send(msg->session);
-}
-
-static SSH_MESSAGE *handle_channel_request_open(SSH_SESSION *session) {
-  SSH_MESSAGE *msg = NULL;
-  STRING *type = NULL;
+static ssh_message handle_channel_request_open(ssh_session session) {
+  ssh_message msg = NULL;
+  ssh_string type = NULL, originator = NULL, destination = NULL;
   char *type_c = NULL;
-  u32 sender, window, packet;
+  uint32_t sender, window, packet, originator_port, destination_port;
 
   enter_function();
 
@@ -331,7 +303,7 @@ static SSH_MESSAGE *handle_channel_request_open(SSH_SESSION *session) {
     return NULL;
   }
 
-  msg->type = SSH_CHANNEL_REQUEST_OPEN;
+  msg->type = SSH_REQUEST_CHANNEL_OPEN;
 
   type = buffer_get_ssh_string(session->in_buffer);
   if (type == NULL) {
@@ -361,6 +333,97 @@ static SSH_MESSAGE *handle_channel_request_open(SSH_SESSION *session) {
     return msg;
   }
 
+  if (strcmp(type_c,"direct-tcpip") == 0) {
+    destination = buffer_get_ssh_string(session->in_buffer);
+	if (destination == NULL) {
+		goto error;
+	}
+	msg->channel_request_open.destination = string_to_char(type);
+	if (msg->channel_request_open.destination == NULL) {
+	  string_free(destination);
+	  goto error;
+	}
+    string_free(destination);
+
+    buffer_get_u32(session->in_buffer, &destination_port);
+    msg->channel_request_open.destination_port = ntohl(destination_port);
+
+    originator = buffer_get_ssh_string(session->in_buffer);
+	if (originator == NULL) {
+	  goto error;
+	}
+	msg->channel_request_open.originator = string_to_char(type);
+	if (msg->channel_request_open.originator == NULL) {
+	  string_free(originator);
+	  goto error;
+	}
+    string_free(originator);
+
+    buffer_get_u32(session->in_buffer, &originator_port);
+    msg->channel_request_open.originator_port = ntohl(originator_port);
+
+    msg->channel_request_open.type = SSH_CHANNEL_DIRECT_TCPIP;
+    SAFE_FREE(type_c);
+    leave_function();
+    return msg;
+  }
+
+  if (strcmp(type_c,"forwarded-tcpip") == 0) {
+    destination = buffer_get_ssh_string(session->in_buffer);
+	if (destination == NULL) {
+		goto error;
+	}
+	msg->channel_request_open.destination = string_to_char(type);
+	if (msg->channel_request_open.destination == NULL) {
+	  string_free(destination);
+	  goto error;
+	}
+    string_free(destination);
+
+    buffer_get_u32(session->in_buffer, &destination_port);
+    msg->channel_request_open.destination_port = ntohl(destination_port);
+
+    originator = buffer_get_ssh_string(session->in_buffer);
+	if (originator == NULL) {
+	  goto error;
+	}
+	msg->channel_request_open.originator = string_to_char(type);
+	if (msg->channel_request_open.originator == NULL) {
+	  string_free(originator);
+	  goto error;
+	}
+    string_free(originator);
+
+    buffer_get_u32(session->in_buffer, &originator_port);
+    msg->channel_request_open.originator_port = ntohl(originator_port);
+
+    msg->channel_request_open.type = SSH_CHANNEL_FORWARDED_TCPIP;
+    SAFE_FREE(type_c);
+    leave_function();
+    return msg;
+  }
+
+  if (strcmp(type_c,"x11") == 0) {
+    originator = buffer_get_ssh_string(session->in_buffer);
+	if (originator == NULL) {
+	  goto error;
+	}
+	msg->channel_request_open.originator = string_to_char(type);
+	if (msg->channel_request_open.originator == NULL) {
+	  string_free(originator);
+	  goto error;
+	}
+    string_free(originator);
+
+    buffer_get_u32(session->in_buffer, &originator_port);
+    msg->channel_request_open.originator_port = ntohl(originator_port);
+
+    msg->channel_request_open.type = SSH_CHANNEL_X11;
+    SAFE_FREE(type_c);
+    leave_function();
+    return msg;
+  }
+
   msg->channel_request_open.type = SSH_CHANNEL_UNKNOWN;
   SAFE_FREE(type_c);
 
@@ -375,9 +438,9 @@ error:
   return NULL;
 }
 
-CHANNEL *ssh_message_channel_request_open_reply_accept(SSH_MESSAGE *msg) {
-  SSH_SESSION *session = msg->session;
-  CHANNEL *chan = NULL;
+ssh_channel ssh_message_channel_request_open_reply_accept(ssh_message msg) {
+  ssh_session session = msg->session;
+  ssh_channel chan = NULL;
 
   enter_function();
 
@@ -432,41 +495,12 @@ error:
   return NULL;
 }
 
-static int ssh_message_channel_request_open_reply_default(SSH_MESSAGE *msg) {
-  ssh_log(msg->session, SSH_LOG_FUNCTIONS, "Refusing a channel");
-
-  if (buffer_add_u8(msg->session->out_buffer
-        , SSH2_MSG_CHANNEL_OPEN_FAILURE) < 0) {
-    goto error;
-  }
-  if (buffer_add_u32(msg->session->out_buffer,
-        htonl(msg->channel_request_open.sender)) < 0) {
-    goto error;
-  }
-  if (buffer_add_u32(msg->session->out_buffer,
-        htonl(SSH2_OPEN_ADMINISTRATIVELY_PROHIBITED)) < 0) {
-    goto error;
-  }
-  /* reason is an empty string */
-  if (buffer_add_u32(msg->session->out_buffer, 0) < 0) {
-    goto error;
-  }
-  /* language too */
-  if (buffer_add_u32(msg->session->out_buffer, 0) < 0) {
-    goto error;
-  }
-
-  return packet_send(msg->session);
-error:
-  return SSH_ERROR;
-}
-
-static SSH_MESSAGE *handle_channel_request(SSH_SESSION *session) {
-  SSH_MESSAGE *msg = NULL;
-  STRING *type = NULL;
+static ssh_message handle_channel_request(ssh_session session) {
+  ssh_message msg = NULL;
+  ssh_string type = NULL;
   char *type_c = NULL;
-  u32 channel;
-  u8 want_reply;
+  uint32_t channel;
+  uint8_t want_reply;
 
   enter_function();
 
@@ -494,12 +528,12 @@ static SSH_MESSAGE *handle_channel_request(SSH_SESSION *session) {
       "Received a %s channel_request for channel %d (want_reply=%hhd)",
       type_c, channel, want_reply);
 
-  msg->type = SSH_CHANNEL_REQUEST;
+  msg->type = SSH_REQUEST_CHANNEL;
   msg->channel_request.channel = ssh_channel_from_local(session, channel);
   msg->channel_request.want_reply = want_reply;
 
   if (strcmp(type_c, "pty-req") == 0) {
-    STRING *term = NULL;
+    ssh_string term = NULL;
     char *term_c = NULL;
     SAFE_FREE(type_c);
 
@@ -536,8 +570,27 @@ static SSH_MESSAGE *handle_channel_request(SSH_SESSION *session) {
     return msg;
   }
 
+  if (strcmp(type_c, "window-change") == 0) {
+    SAFE_FREE(type_c);
+
+    msg->channel_request.type = SSH_CHANNEL_REQUEST_WINDOW_CHANGE;
+
+    buffer_get_u32(session->in_buffer, &msg->channel_request.width);
+    buffer_get_u32(session->in_buffer, &msg->channel_request.height);
+    buffer_get_u32(session->in_buffer, &msg->channel_request.pxwidth);
+    buffer_get_u32(session->in_buffer, &msg->channel_request.pxheight);
+
+    msg->channel_request.width = ntohl(msg->channel_request.width);
+    msg->channel_request.height = ntohl(msg->channel_request.height);
+    msg->channel_request.pxwidth = ntohl(msg->channel_request.pxwidth);
+    msg->channel_request.pxheight = ntohl(msg->channel_request.pxheight);
+
+    leave_function();
+    return msg;
+  }
+
   if (strcmp(type_c, "subsystem") == 0) {
-    STRING *subsys = NULL;
+    ssh_string subsys = NULL;
     char *subsys_c = NULL;
 
     SAFE_FREE(type_c);
@@ -567,8 +620,9 @@ static SSH_MESSAGE *handle_channel_request(SSH_SESSION *session) {
     leave_function();
     return msg;
   }
+
   if (strcmp(type_c, "exec") == 0) {
-    STRING *cmd = NULL;
+    ssh_string cmd = NULL;
 
     SAFE_FREE(type_c);
 
@@ -589,6 +643,38 @@ static SSH_MESSAGE *handle_channel_request(SSH_SESSION *session) {
     return msg;
   }
 
+  if (strcmp(type_c, "env") == 0) {
+    ssh_string name = NULL;
+    ssh_string value = NULL;
+
+    SAFE_FREE(type_c);
+
+    name = buffer_get_ssh_string(session->in_buffer);
+    if (name == NULL) {
+      goto error;
+    }
+    value = buffer_get_ssh_string(session->in_buffer);
+	if (value == NULL) {
+		string_free(name);
+	  goto error;
+	}
+
+    msg->channel_request.type = SSH_CHANNEL_REQUEST_ENV;
+    msg->channel_request.var_name = string_to_char(name);
+    msg->channel_request.var_value = string_to_char(value);
+    if (msg->channel_request.var_name == NULL ||
+		msg->channel_request.var_value == NULL) {
+      string_free(name);
+      string_free(value);
+      goto error;
+    }
+    string_free(name);
+    string_free(value);
+
+    leave_function();
+    return msg;
+  }
+
   msg->channel_request.type = SSH_CHANNEL_UNKNOWN;
   SAFE_FREE(type_c);
 
@@ -603,12 +689,8 @@ error:
   return NULL;
 }
 
-char *ssh_message_channel_request_subsystem(SSH_MESSAGE *msg){
-    return msg->channel_request.subsystem;
-}
-
-int ssh_message_channel_request_reply_success(SSH_MESSAGE *msg) {
-  u32 channel;
+int ssh_message_channel_request_reply_success(ssh_message msg) {
+  uint32_t channel;
 
   if (msg == NULL) {
     return SSH_ERROR;
@@ -636,80 +718,51 @@ int ssh_message_channel_request_reply_success(SSH_MESSAGE *msg) {
   return SSH_OK;
 }
 
-static int ssh_message_channel_request_reply_default(SSH_MESSAGE *msg) {
-  u32 channel;
-
-  if (msg->channel_request.want_reply) {
-    channel = msg->channel_request.channel->remote_channel;
-
-    ssh_log(msg->session, SSH_LOG_PACKET,
-        "Sending a default channel_request denied to channel %d", channel);
-
-    if (buffer_add_u8(msg->session->out_buffer, SSH2_MSG_CHANNEL_FAILURE) < 0) {
-      return SSH_ERROR;
-    }
-    if (buffer_add_u32(msg->session->out_buffer, htonl(channel)) < 0) {
-      return SSH_ERROR;
-    }
-
-    return packet_send(msg->session);
+ssh_message ssh_message_retrieve(ssh_session session, uint32_t packettype){
+  ssh_message msg=NULL;
+  enter_function();
+  switch(packettype) {
+    case SSH2_MSG_SERVICE_REQUEST:
+      msg=handle_service_request(session);
+      break;
+    case SSH2_MSG_USERAUTH_REQUEST:
+      msg = handle_userauth_request(session);
+      break;
+    case SSH2_MSG_CHANNEL_OPEN:
+      msg = handle_channel_request_open(session);
+      break;
+    case SSH2_MSG_CHANNEL_REQUEST:
+      msg = handle_channel_request(session);
+      break;
+    default:
+      if (handle_unimplemented(session) == 0) {
+        ssh_set_error(session, SSH_FATAL,
+            "Unhandled message %d\n", session->in_packet.type);
+      }
   }
-
-  ssh_log(msg->session, SSH_LOG_PACKET,
-      "The client doesn't want to know the request failed!");
-
-  return SSH_OK;
+  leave_function();
+  return msg;
 }
 
-SSH_MESSAGE *ssh_message_get(SSH_SESSION *session) {
-  SSH_MESSAGE *msg = NULL;
-
+/* \brief blocking message retrieval
+ * \bug does anything that is not a message, like a channel read/write
+ */
+ssh_message ssh_message_get(ssh_session session) {
+  ssh_message msg = NULL;
   enter_function();
-
   do {
     if ((packet_read(session) != SSH_OK) ||
         (packet_translate(session) != SSH_OK)) {
-      goto error;
+      leave_function();
+      return NULL;
     }
-    switch(session->in_packet.type) {
-      case SSH2_MSG_SERVICE_REQUEST:
-        if (handle_service_request(session) < 0) {
-          goto error;
-        }
-        break;
-      case SSH2_MSG_IGNORE:
-      case SSH2_MSG_DEBUG:
-        break;
-      case SSH2_MSG_USERAUTH_REQUEST:
-        msg = handle_userauth_request(session);
-
-        leave_function();
-        return msg;
-      case SSH2_MSG_CHANNEL_OPEN:
-        msg = handle_channel_request_open(session);
-
-        leave_function();
-        return msg;
-      case SSH2_MSG_CHANNEL_REQUEST:
-        msg = handle_channel_request(session);
-        leave_function();
-
-        return msg;
-      default:
-        if (handle_unimplemented(session) == 0) {
-          ssh_set_error(session, SSH_FATAL,
-              "Unhandled message %d\n", session->in_packet.type);
-        }
-        goto error;
-    }
-  } while(1);
-
-error:
+  } while(session->in_packet.type==SSH2_MSG_IGNORE || session->in_packet.type==SSH2_MSG_DEBUG);
+  msg=ssh_message_retrieve(session,session->in_packet.type);
   leave_function();
-  return NULL;
+  return msg;
 }
 
-int ssh_message_type(SSH_MESSAGE *msg) {
+int ssh_message_type(ssh_message msg) {
   if (msg == NULL) {
     return -1;
   }
@@ -717,64 +770,43 @@ int ssh_message_type(SSH_MESSAGE *msg) {
   return msg->type;
 }
 
-int ssh_message_subtype(SSH_MESSAGE *msg) {
+int ssh_message_subtype(ssh_message msg) {
   if (msg == NULL) {
     return -1;
   }
 
   switch(msg->type) {
-    case SSH_AUTH_REQUEST:
+    case SSH_REQUEST_AUTH:
       return msg->auth_request.method;
-    case SSH_CHANNEL_REQUEST_OPEN:
+    case SSH_REQUEST_CHANNEL_OPEN:
       return msg->channel_request_open.type;
-    case SSH_CHANNEL_REQUEST:
+    case SSH_REQUEST_CHANNEL:
       return msg->channel_request.type;
   }
 
   return -1;
 }
 
-int ssh_message_reply_default(SSH_MESSAGE *msg) {
-  if (msg == NULL) {
-    return -1;
-  }
-
-  switch(msg->type) {
-    case SSH_AUTH_REQUEST:
-      return ssh_message_auth_reply_default(msg, 0);
-    case SSH_CHANNEL_REQUEST_OPEN:
-      return ssh_message_channel_request_open_reply_default(msg);
-    case SSH_CHANNEL_REQUEST:
-      return ssh_message_channel_request_reply_default(msg);
-    default:
-      ssh_log(msg->session, SSH_LOG_PACKET,
-          "Don't know what to default reply to %d type",
-          msg->type);
-      break;
-  }
-
-  return -1;
-}
-
-void ssh_message_free(SSH_MESSAGE *msg){
+void ssh_message_free(ssh_message msg){
   if (msg == NULL) {
     return;
   }
 
   switch(msg->type) {
-    case SSH_AUTH_REQUEST:
+    case SSH_REQUEST_AUTH:
       SAFE_FREE(msg->auth_request.username);
       if (msg->auth_request.password) {
         memset(msg->auth_request.password, 0,
             strlen(msg->auth_request.password));
         SAFE_FREE(msg->auth_request.password);
       }
+      publickey_free(msg->auth_request.public_key);
       break;
-    case SSH_CHANNEL_REQUEST_OPEN:
+    case SSH_REQUEST_CHANNEL_OPEN:
       SAFE_FREE(msg->channel_request_open.originator);
       SAFE_FREE(msg->channel_request_open.destination);
       break;
-    case SSH_CHANNEL_REQUEST:
+    case SSH_REQUEST_CHANNEL:
       SAFE_FREE(msg->channel_request.TERM);
       SAFE_FREE(msg->channel_request.modes);
       SAFE_FREE(msg->channel_request.var_name);
@@ -782,10 +814,29 @@ void ssh_message_free(SSH_MESSAGE *msg){
       SAFE_FREE(msg->channel_request.command);
       SAFE_FREE(msg->channel_request.subsystem);
       break;
+    case SSH_REQUEST_SERVICE:
+      SAFE_FREE(msg->service_request.service);
+      break;
   }
-
   ZERO_STRUCTP(msg);
   SAFE_FREE(msg);
+}
+
+/** \internal
+ * \brief handle various SSH request messages and stack them for callback
+ * \param session SSH session
+ * \param type packet type
+ * \returns nothing
+ */
+void message_handle(ssh_session session, uint32_t type){
+  ssh_message msg=ssh_message_retrieve(session,type);
+  ssh_log(session,SSH_LOG_PROTOCOL,"Stacking message from packet type %d",type);
+  if(msg){
+    if(!session->ssh_message_list){
+      session->ssh_message_list=ssh_list_new();
+    }
+    ssh_list_add(session->ssh_message_list,msg);
+  }
 }
 
 /**

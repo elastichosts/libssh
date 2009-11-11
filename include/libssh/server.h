@@ -1,3 +1,4 @@
+/* Public include file for server support */
 /*
  * This file is part of the SSH Library
  *
@@ -35,14 +36,27 @@
 extern "C" {
 #endif
 
-typedef struct ssh_bind_struct SSH_BIND;
+enum ssh_bind_options_e {
+  SSH_BIND_OPTIONS_BINDADDR,
+  SSH_BIND_OPTIONS_BINDPORT,
+  SSH_BIND_OPTIONS_BINDPORT_STR,
+  SSH_BIND_OPTIONS_HOSTKEY,
+  SSH_BIND_OPTIONS_DSAKEY,
+  SSH_BIND_OPTIONS_RSAKEY,
+  SSH_BIND_OPTIONS_BANNER,
+  SSH_BIND_OPTIONS_LOG_VERBOSITY,
+  SSH_BIND_OPTIONS_LOG_VERBOSITY_STR
+};
+
+//typedef struct ssh_bind_struct SSH_BIND;
+typedef struct ssh_bind_struct* ssh_bind;
 
 /**
  * @brief Creates a new SSH server bind.
  *
  * @return A newly allocated ssh_bind session pointer.
  */
-SSH_BIND *ssh_bind_new(void);
+LIBSSH_API ssh_bind ssh_bind_new(void);
 
 /**
  * @brief Set the opitons for the current SSH server bind.
@@ -51,7 +65,8 @@ SSH_BIND *ssh_bind_new(void);
  *
  * @param  options      The option structure to set.
  */
-void ssh_bind_set_options(SSH_BIND *ssh_bind, SSH_OPTIONS *options);
+LIBSSH_API int ssh_bind_options_set(ssh_bind sshbind,
+    enum ssh_bind_options_e type, const void *value);
 
 /**
  * @brief Start listening to the socket.
@@ -60,7 +75,7 @@ void ssh_bind_set_options(SSH_BIND *ssh_bind, SSH_OPTIONS *options);
  *
  * @return 0 on success, < 0 on error.
  */
-int ssh_bind_listen(SSH_BIND *ssh_bind);
+LIBSSH_API int ssh_bind_listen(ssh_bind ssh_bind);
 
 /**
  * @brief  Set the session to blocking/nonblocking mode.
@@ -69,7 +84,7 @@ int ssh_bind_listen(SSH_BIND *ssh_bind);
  *
  * @param  blocking     Zero for nonblocking mode.
  */
-void ssh_bind_set_blocking(SSH_BIND *ssh_bind, int blocking);
+LIBSSH_API void ssh_bind_set_blocking(ssh_bind sshbind, int blocking);
 
 /**
  * @brief Recover the file descriptor from the session.
@@ -78,39 +93,40 @@ void ssh_bind_set_blocking(SSH_BIND *ssh_bind, int blocking);
  *
  * @return The file descriptor.
  */
-socket_t ssh_bind_get_fd(SSH_BIND *ssh_bind);
+LIBSSH_API socket_t ssh_bind_get_fd(ssh_bind ssh_bind);
 
 /**
  * @brief Set the file descriptor for a session.
  *
  * @param  ssh_bind     The ssh server bind to set the fd.
  *
- * @param  fd           The file descriptor.
+ * @param  fd           The file descriptssh_bind B
  */
-void ssh_bind_set_fd(SSH_BIND *ssh_bind, socket_t fd);
+LIBSSH_API void ssh_bind_set_fd(ssh_bind sshbind, socket_t fd);
 
 /**
  * @brief Allow the file descriptor to accept new sessions.
  *
  * @param  ssh_bind     The ssh server bind to use.
  */
-void ssh_bind_fd_toaccept(SSH_BIND *ssh_bind);
+LIBSSH_API void ssh_bind_fd_toaccept(ssh_bind ssh_bind);
 
 /**
  * @brief Accept an incoming ssh connection and initialize the session.
  *
  * @param  ssh_bind     The ssh server bind to accept a connection.
- *
+ * @param  session			A preallocated ssh session
+ * @see ssh_new
  * @return A newly allocated ssh session, NULL on error.
  */
-SSH_SESSION *ssh_bind_accept(SSH_BIND *ssh_bind);
+LIBSSH_API int ssh_bind_accept(ssh_bind ssh_bind, ssh_session session);
 
 /**
  * @brief Free a ssh servers bind.
  *
  * @param  ssh_bind     The ssh server bind to free.
  */
-void ssh_bind_free(SSH_BIND *ssh_bind);
+LIBSSH_API void ssh_bind_free(ssh_bind ssh_bind);
 
 /**
  * @brief Exchange the banner and cryptographic keys.
@@ -119,54 +135,45 @@ void ssh_bind_free(SSH_BIND *ssh_bind);
  *
  * @return 0 on success, < 0 on error.
  */
-int ssh_accept(SSH_SESSION *session);
+LIBSSH_API int ssh_accept(ssh_session session);
+
+LIBSSH_API int channel_write_stderr(ssh_channel channel, const void *data, uint32_t len);
 
 /* messages.c */
+LIBSSH_API int ssh_message_reply_default(ssh_message msg);
 
-#define SSH_AUTH_REQUEST 1
-#define SSH_CHANNEL_REQUEST_OPEN 2
-#define SSH_CHANNEL_REQUEST 3
+LIBSSH_API char *ssh_message_auth_user(ssh_message msg);
+LIBSSH_API char *ssh_message_auth_password(ssh_message msg);
+LIBSSH_API ssh_public_key ssh_message_auth_publickey(ssh_message msg);
+LIBSSH_API int ssh_message_auth_reply_success(ssh_message msg,int partial);
+LIBSSH_API int ssh_message_auth_reply_pk_ok(ssh_message msg, ssh_string algo, ssh_string pubkey);
+LIBSSH_API int ssh_message_auth_set_methods(ssh_message msg, int methods);
 
-#define SSH_AUTH_NONE (1<<0)
-#define SSH_AUTH_PASSWORD (1<<1)
-#define SSH_AUTH_HOSTBASED (1<<2)
-#define SSH_AUTH_PUBLICKEY (1<<3)
-#define SSH_AUTH_KEYBINT (1<<4)
-#define SSH_AUTH_UNKNOWN 0
+LIBSSH_API int ssh_message_service_reply_success(ssh_message msg);
+LIBSSH_API char *ssh_message_service_service(ssh_message msg);
 
-#define SSH_CHANNEL_SESSION 1
-#define SSH_CHANNEL_TCPIP 2
-#define SSH_CHANNEL_X11 3
-#define SSH_CHANNEL_UNKNOWN 4
+LIBSSH_API void ssh_set_message_callback(ssh_session session,
+    int(*ssh_message_callback)(ssh_session session, ssh_message msg));
 
-#define SSH_CHANNEL_REQUEST_PTY 1
-#define SSH_CHANNEL_REQUEST_EXEC 2
-#define SSH_CHANNEL_REQUEST_SHELL 3
-#define SSH_CHANNEL_REQUEST_ENV 4
-#define SSH_CHANNEL_REQUEST_SUBSYSTEM 5
-#define SSH_CHANNEL_REQUEST_WINDOW_CHANGE 6
-#define SSH_CHANNEL_REQUEST_UNKNOWN 7
+LIBSSH_API char *ssh_message_channel_request_open_originator(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_open_originator_port(ssh_message msg);
+LIBSSH_API char *ssh_message_channel_request_open_destination(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_open_destination_port(ssh_message msg);
 
-typedef struct ssh_message SSH_MESSAGE;
+LIBSSH_API ssh_channel ssh_message_channel_request_channel(ssh_message msg);
 
-SSH_MESSAGE *ssh_message_get(SSH_SESSION *session);
-int ssh_message_type(SSH_MESSAGE *msg);
-int ssh_message_subtype(SSH_MESSAGE *msg);
-int ssh_message_reply_default(SSH_MESSAGE *msg);
-void ssh_message_free(SSH_MESSAGE *msg);
+LIBSSH_API char *ssh_message_channel_request_pty_term(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_pty_width(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_pty_height(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_pty_pxwidth(ssh_message msg);
+LIBSSH_API int ssh_message_channel_request_pty_pxheight(ssh_message msg);
 
-char *ssh_message_auth_user(SSH_MESSAGE *msg);
-char *ssh_message_auth_password(SSH_MESSAGE *msg);
-int ssh_message_auth_reply_success(SSH_MESSAGE *msg,int partial);
-int ssh_message_auth_set_methods(SSH_MESSAGE *msg, int methods);
+LIBSSH_API char *ssh_message_channel_request_env_name(ssh_message msg);
+LIBSSH_API char *ssh_message_channel_request_env_value(ssh_message msg);
 
-CHANNEL *ssh_message_channel_request_open_reply_accept(SSH_MESSAGE *msg);
+LIBSSH_API char *ssh_message_channel_request_command(ssh_message msg);
 
-CHANNEL *ssh_message_channel_request_channel(SSH_MESSAGE *msg);
-// returns the TERM env variable
-char *ssh_message_channel_request_pty_term(SSH_MESSAGE *msg);
-char *ssh_message_channel_request_subsystem(SSH_MESSAGE *msg);
-int ssh_message_channel_request_reply_success(SSH_MESSAGE *msg);
+LIBSSH_API char *ssh_message_channel_request_subsystem(ssh_message msg);
 
 #ifdef __cplusplus
 }

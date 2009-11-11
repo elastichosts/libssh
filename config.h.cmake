@@ -23,6 +23,9 @@
 /* Define to 1 if you have the <openssl/aes.h> header file. */
 #cmakedefine HAVE_OPENSSL_AES_H 1
 
+/* Define to 1 if you have the <wspiapi.h> header file. */
+#cmakedefine HAVE_WSPIAPI_H 1
+
 /* Define to 1 if you have the <openssl/blowfish.h> header file. */
 #cmakedefine HAVE_OPENSSL_BLOWFISH_H 1
 
@@ -46,6 +49,9 @@
 /* Define to 1 if you have the `select' function. */
 #cmakedefine HAVE_SELECT 1
 
+/* Define to 1 if you have the `regcomp' function. */
+#cmakedefine HAVE_REGCOMP 1
+
 /*************************** LIBRARIES ***************************/
 
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
@@ -62,7 +68,7 @@
 /* Define to 1 if you want to enable ZLIB */
 #cmakedefine WITH_LIBZ 1
 
-/* Define to 1 if you want to enable SSH1 */
+/* Define to 1 if you want to enable SFTP */
 #cmakedefine WITH_SFTP 1
 
 /* Define to 1 if you want to enable SSH1 */
@@ -74,14 +80,25 @@
 /* Define to 1 if you want to enable debug output for crypto functions */
 #cmakedefine DEBUG_CRYPTO 1
 
+/* Define to 1 if you want to enable calltrace debug output */
+#cmakedefine DEBUG_CALLTRACE 1
+
+/*************************** ENDIAN *****************************/
+
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */
-#if defined AC_APPLE_UNIVERSAL_BUILD
-# if defined __BIG_ENDIAN__
-#  define WORDS_BIGENDIAN 1
-# endif
-#else
-# ifndef WORDS_BIGENDIAN
-/* #  undef WORDS_BIGENDIAN */
-# endif
-#endif
+#cmakedefine WORDS_BIGENDIAN 1
+
+/************************* MS Windows ***************************/
+
+#ifdef _WIN32
+# ifdef _MSC_VER
+/* On Microsoft compilers define inline to __inline on all others use inline */
+#  undef inline
+#  define inline __inline
+
+#  undef strdup
+#  define strdup _strdup
+# endif // _MSC_VER
+#endif /* _WIN32 */
+

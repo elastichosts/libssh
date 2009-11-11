@@ -3,7 +3,7 @@
  *
  * This file is part of the SSH Library
  *
- * Copyright (c) 2003-2008 by Aris Adamantiadis
+ * Copyright (c) 2003-2009 by Aris Adamantiadis
  *
  * The SSH Library is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -26,16 +26,33 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #ifdef _WIN32
-/* getaddrinfo, freeaddrinfo, getnameinfo */
-#define _WIN32_WINNT 0x0501
+/*
+ * Only use Windows API functions available on Windows 2000 SP4 or later.
+ * The available constants are in <sdkddkver.h>.
+ *  http://msdn.microsoft.com/en-us/library/aa383745.aspx
+ *  http://blogs.msdn.com/oldnewthing/archive/2007/04/11/2079137.aspx
+ */
+#undef _WIN32_WINNT
+#ifdef HAVE_WSPIAPI_H
+#define _WIN32_WINNT 0x0500 /* _WIN32_WINNT_WIN2K */
+#undef NTDDI_VERSION
+#define NTDDI_VERSION 0x05000400 /* NTDDI_WIN2KSP4 */
+#else
+#define _WIN32_WINNT 0x0501 /* _WIN32_WINNT_WINXP */
+#undef NTDDI_VERSION
+#define NTDDI_VERSION 0x05010000 /* NTDDI_WINXP */
+#endif
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include "wspiapi.h" /* Workaround for w2k systems */
+/* <wspiapi.h> is necessary for getaddrinfo before Windows XP, but it isn't
+ * available on some platforms like MinGW. */
+#ifdef HAVE_WSPIAPI_H
+#include <wspiapi.h>
+#endif
 
 #else /* _WIN32 */
 
@@ -47,6 +64,9 @@
 #endif /* _WIN32 */
 
 #include "libssh/priv.h"
+#include "libssh/socket.h"
+#include "libssh/channels.h"
+#include "libssh/session.h"
 
 #ifndef HAVE_SELECT
 #error "Your system must have select()"
@@ -55,6 +75,14 @@
 #ifndef HAVE_GETADDRINFO
 #error "Your system must have getaddrinfo()"
 #endif
+
+#ifdef HAVE_REGCOMP
+/* don't declare gnu extended regexp's */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE
+#endif
+#include <regex.h>
+#endif /* HAVE_REGCOMP */
 
 #ifdef _WIN32
 static void sock_set_nonblocking(socket_t sock) {
@@ -85,9 +113,64 @@ static void sock_set_nonblocking(socket_t sock) {
 static void sock_set_blocking(socket_t sock) {
   fcntl(sock, F_SETFL, 0);
 }
+
 #endif /* _WIN32 */
 
-static int getai(const char *host, int port, struct addrinfo **ai) {
+#ifdef HAVE_REGCOMP
+static regex_t *ip_regex = NULL;
+
+/** @internal
+ * @brief initializes and compile the regexp to be used for IP matching
+ * @returns -1 on error (and error message is set)
+ * @returns 0 on success
+ */
+int ssh_regex_init(){
+  if(ip_regex==NULL){
+    int err;
+    regex_t *regex=malloc(sizeof (regex_t));
+    ZERO_STRUCTP(regex);
+    err=regcomp(regex,"^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$",REG_EXTENDED | REG_NOSUB);
+    if(err != 0){
+      char buffer[128];
+      regerror(err,regex,buffer,sizeof(buffer));
+      fprintf(stderr,"Error while compiling regular expression : %s\n",buffer);
+      SAFE_FREE(regex);
+      return -1;
+    }
+    ip_regex=regex;
+  }
+  return 0;
+}
+
+/** @internal
+ * @brief clean up the IP regexp
+ */
+void ssh_regex_finalize(){
+  if(ip_regex){
+    regfree(ip_regex);
+    SAFE_FREE(ip_regex);
+  }
+}
+
+#else /* HAVE_REGCOMP */
+int ssh_regex_init(){
+  return 0;
+}
+void ssh_regex_finalize(){
+}
+#endif
+
+
+static int ssh_connect_socket_close(socket_t s){
+#ifdef _WIN32
+  return closesocket(s);
+#else
+  return close(s);
+#endif
+}
+
+
+static int getai(ssh_session session, const char *host, int port, struct addrinfo **ai) {
   const char *service = NULL;
   struct addrinfo hints;
   char s_port[10];
@@ -103,12 +186,21 @@ static int getai(const char *host, int port, struct addrinfo **ai) {
   } else {
     snprintf(s_port, sizeof(s_port), "%hu", port);
     service = s_port;
+#ifdef AI_NUMERICSERV
+    hints.ai_flags=AI_NUMERICSERV;
+#endif
   }
-
+#ifdef HAVE_REGCOMP
+  if(regexec(ip_regex,host,0,NULL,0) == 0){
+    /* this is an IP address */
+    ssh_log(session,SSH_LOG_PACKET,"host %s matches an IP address",host);
+    hints.ai_flags |= AI_NUMERICHOST;
+  }
+#endif
   return getaddrinfo(host, service, &hints, ai);
 }
 
-static int ssh_connect_ai_timeout(SSH_SESSION *session, const char *host,
+static int ssh_connect_ai_timeout(ssh_session session, const char *host,
     int port, struct addrinfo *ai, long timeout, long usec, socket_t s) {
   struct timeval to;
   fd_set set;
@@ -134,7 +226,7 @@ static int ssh_connect_ai_timeout(SSH_SESSION *session, const char *host,
     /* timeout */
     ssh_set_error(session, SSH_FATAL,
         "Timeout while connecting to %s:%d", host, port);
-    close(s);
+    ssh_connect_socket_close(s);
     leave_function();
     return -1;
   }
@@ -142,7 +234,7 @@ static int ssh_connect_ai_timeout(SSH_SESSION *session, const char *host,
   if (rc < 0) {
     ssh_set_error(session, SSH_FATAL,
         "Select error: %s", strerror(errno));
-    close(s);
+    ssh_connect_socket_close(s);
     leave_function();
     return -1;
   }
@@ -153,7 +245,7 @@ static int ssh_connect_ai_timeout(SSH_SESSION *session, const char *host,
   if (rc != 0) {
     ssh_set_error(session, SSH_FATAL,
         "Connect to %s:%d failed: %s", host, port, strerror(rc));
-    close(s);
+    ssh_connect_socket_close(s);
     leave_function();
     return -1;
   }
@@ -174,7 +266,7 @@ static int ssh_connect_ai_timeout(SSH_SESSION *session, const char *host,
  *
  * @returns A file descriptor, < 0 on error.
  */
-socket_t ssh_connect_host(SSH_SESSION *session, const char *host,
+socket_t ssh_connect_host(ssh_session session, const char *host,
     const char *bind_addr, int port, long timeout, long usec) {
   socket_t s = -1;
   int rc;
@@ -183,7 +275,7 @@ socket_t ssh_connect_host(SSH_SESSION *session, const char *host,
 
   enter_function();
 
-  rc = getai(host, port, &ai);
+  rc = getai(session,host, port, &ai);
   if (rc != 0) {
     ssh_set_error(session, SSH_FATAL,
         "Failed to resolve hostname %s (%s)", host, gai_strerror(rc));
@@ -206,7 +298,7 @@ socket_t ssh_connect_host(SSH_SESSION *session, const char *host,
 
       ssh_log(session, SSH_LOG_PACKET, "Resolving %s\n", bind_addr);
 
-      rc = getai(host, 0, &bind_ai);
+      rc = getai(session,bind_addr, 0, &bind_ai);
       if (rc != 0) {
         ssh_set_error(session, SSH_FATAL,
             "Failed to resolve bind address %s (%s)",
@@ -229,7 +321,7 @@ socket_t ssh_connect_host(SSH_SESSION *session, const char *host,
 
       /* Cannot bind to any local addresses */
       if (bind_itr == NULL) {
-        close(s);
+        ssh_connect_socket_close(s);
         s = -1;
         continue;
       }
@@ -244,7 +336,7 @@ socket_t ssh_connect_host(SSH_SESSION *session, const char *host,
 
     if (connect(s, itr->ai_addr, itr->ai_addrlen) < 0) {
       ssh_set_error(session, SSH_FATAL, "Connect failed: %s", strerror(errno));
-      close(s);
+      ssh_connect_socket_close(s);
       s = -1;
       leave_function();
       continue;
@@ -292,7 +384,7 @@ socket_t ssh_connect_host(SSH_SESSION *session, const char *host,
  *
  * @see select(2)
  */
-int ssh_select(CHANNEL **channels, CHANNEL **outchannels, socket_t maxfd,
+int ssh_select(ssh_channel *channels, ssh_channel *outchannels, socket_t maxfd,
     fd_set *readfds, struct timeval *timeout) {
   struct timeval zerotime;
   fd_set localset, localset2;

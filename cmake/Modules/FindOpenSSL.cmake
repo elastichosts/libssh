@@ -37,20 +37,26 @@ else (OPENSSL_LIBRARIES AND OPENSSL_INCLUDE_DIRS)
       ${_OPENSSL_INCLUDEDIR}
       /usr/include
       /usr/local/include
+      /usr/local/ssl/include
       /opt/local/include
       /sw/include
+      /usr/lib/sfw/include
   )
   mark_as_advanced(OPENSSL_INCLUDE_DIR)
 
   find_library(SSL_LIBRARY
     NAMES
       ssl
+      libssl
     PATHS
       ${_OPENSSL_LIBDIR}
       /usr/lib
       /usr/local/lib
+      /usr/local/ssl/lib
       /opt/local/lib
       /sw/lib
+      /usr/sfw/lib/64
+      /usr/sfw/lib
   )
   mark_as_advanced(SSL_LIBRARY)
 
@@ -61,8 +67,11 @@ else (OPENSSL_LIBRARIES AND OPENSSL_INCLUDE_DIRS)
       ${_OPENSSL_LIBDIR}
       /usr/lib
       /usr/local/lib
+      /usr/local/ssl/lib
       /opt/local/lib
       /sw/lib
+      /usr/sfw/lib/64
+      /usr/sfw/lib
   )
   mark_as_advanced(SSLEAY32_LIBRARY)
 
@@ -73,20 +82,32 @@ else (OPENSSL_LIBRARIES AND OPENSSL_INCLUDE_DIRS)
       ${_OPENSSL_LIBDIR}
       /usr/lib
       /usr/local/lib
+      /usr/local/ssl/lib
       /opt/local/lib
       /sw/lib
+      /usr/sfw/lib/64
+      /usr/sfw/lib
   )
   mark_as_advanced(SSLEAY32MD_LIBRARY)
 
   find_library(CRYPTO_LIBRARY
     NAMES
       crypto
+      libcrypto
+      eay
+      eay32
+      libeay
+      libeay32
     PATHS
       ${_OPENSSL_LIBDIR}
+      /lib
       /usr/lib
       /usr/local/lib
+      /usr/local/ssl/lib
       /opt/local/lib
       /sw/lib
+      /usr/sfw/lib/64
+      /usr/sfw/lib
   )
   mark_as_advanced(CRYPTO_LIBRARY)
 

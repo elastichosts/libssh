@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "libssh/priv.h"
+#include "libssh/session.h"
 
 /**
  * @defgroup ssh_log SSH Logging
@@ -44,7 +45,7 @@
  *
  * @param format        The format string of the log entry.
  */
-void ssh_log(SSH_SESSION *session, int verbosity, const char *format, ...) {
+void ssh_log(ssh_session session, int verbosity, const char *format, ...) {
   char buffer[1024];
   char indent[256];
   int min;
@@ -55,8 +56,9 @@ void ssh_log(SSH_SESSION *session, int verbosity, const char *format, ...) {
     vsnprintf(buffer, sizeof(buffer), format, va);
     va_end(va);
 
-    if (session->options->log_function) {
-      session->options->log_function(buffer, session, verbosity);
+    if (session->callbacks && session->callbacks->log_function) {
+      session->callbacks->log_function(session, verbosity, buffer,
+          session->callbacks->userdata);
     } else if (verbosity == SSH_LOG_FUNCTIONS) {
       if (session->log_indent > 255) {
         min = 255;

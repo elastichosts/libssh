@@ -33,25 +33,74 @@
 
 #ifndef _WIN32
 #include <arpa/inet.h>
+#else
+#define S_IFSOCK 0140000
+#define S_IFLNK  0120000
+
+#ifdef _MSC_VER
+#define S_IFBLK  0060000
+#define S_IFIFO  0010000
+#endif
 #endif
 
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
 #include "libssh/sftp.h"
+#include "libssh/buffer.h"
+#include "libssh/channels.h"
+#include "libssh/session.h"
+#include "libssh/misc.h"
 
 #ifdef WITH_SFTP
 
 #define sftp_enter_function() _enter_function(sftp->channel->session)
 #define sftp_leave_function() _leave_function(sftp->channel->session)
 
-/* functions */
-static int sftp_enqueue(SFTP_SESSION *session, SFTP_MESSAGE *msg);
-static void sftp_message_free(SFTP_MESSAGE *msg);
-static void sftp_set_error(SFTP_SESSION *sftp, int errnum);
-static void status_msg_free(STATUS_MESSAGE *status);
+struct sftp_ext_struct {
+  unsigned int count;
+  char **name;
+  char **data;
+};
 
-SFTP_SESSION *sftp_new(SSH_SESSION *session){
-  SFTP_SESSION *sftp;
+/* functions */
+static int sftp_enqueue(sftp_session session, sftp_message msg);
+static void sftp_message_free(sftp_message msg);
+static void sftp_set_error(sftp_session sftp, int errnum);
+static void status_msg_free(sftp_status_message status);
+
+static sftp_ext sftp_ext_new(void) {
+  sftp_ext ext;
+
+  ext = malloc(sizeof(struct sftp_ext_struct));
+  if (ext == NULL) {
+    return NULL;
+  }
+  ZERO_STRUCTP(ext);
+
+  return ext;
+}
+
+static void sftp_ext_free(sftp_ext ext) {
+  unsigned int i;
+
+  if (ext == NULL) {
+    return;
+  }
+
+  if (ext->count) {
+    for (i = 0; i < ext->count; i++) {
+      SAFE_FREE(ext->name[i]);
+      SAFE_FREE(ext->data[i]);
+    }
+    SAFE_FREE(ext->name);
+    SAFE_FREE(ext->data);
+  }
+
+  SAFE_FREE(ext);
+}
+
+sftp_session sftp_new(ssh_session session){
+  sftp_session sftp;
 
   enter_function();
 
@@ -60,12 +109,21 @@ SFTP_SESSION *sftp_new(SSH_SESSION *session){
     return NULL;
   }
 
-  sftp = malloc(sizeof(SFTP_SESSION));
+  sftp = malloc(sizeof(struct sftp_session_struct));
   if (sftp == NULL) {
+    ssh_set_error_oom(session);
     leave_function();
     return NULL;
   }
-  memset(sftp,0,sizeof(SFTP_SESSION));
+  ZERO_STRUCTP(sftp);
+
+  sftp->ext = sftp_ext_new();
+  if (sftp->ext == NULL) {
+    ssh_set_error_oom(session);
+    SAFE_FREE(sftp);
+    sftp_leave_function();
+    return NULL;
+  }
 
   sftp->session = session;
   sftp->channel = channel_new(session);
@@ -93,11 +151,12 @@ SFTP_SESSION *sftp_new(SSH_SESSION *session){
 }
 
 #ifdef WITH_SERVER
-SFTP_SESSION *sftp_server_new(SSH_SESSION *session, CHANNEL *chan){
-  SFTP_SESSION *sftp = NULL;
+sftp_session sftp_server_new(ssh_session session, ssh_channel chan){
+  sftp_session sftp = NULL;
 
-  sftp = malloc(sizeof(SFTP_SESSION));
+  sftp = malloc(sizeof(struct sftp_session_struct));
   if (sftp == NULL) {
+    ssh_set_error_oom(session);
     return NULL;
   }
   ZERO_STRUCTP(sftp);
@@ -108,11 +167,11 @@ SFTP_SESSION *sftp_server_new(SSH_SESSION *session, CHANNEL *chan){
   return sftp;
 }
 
-int sftp_server_init(SFTP_SESSION *sftp){
-  struct ssh_session *session = sftp->session;
-  SFTP_PACKET *packet = NULL;
-  BUFFER *reply = NULL;
-  u32 version;
+int sftp_server_init(sftp_session sftp){
+  ssh_session session = sftp->session;
+  sftp_packet packet = NULL;
+  ssh_buffer reply = NULL;
+  uint32_t version;
 
   sftp_enter_function();
 
@@ -143,11 +202,13 @@ int sftp_server_init(SFTP_SESSION *sftp){
 
   reply = buffer_new();
   if (reply == NULL) {
+    ssh_set_error_oom(session);
     sftp_leave_function();
     return -1;
   }
 
   if (buffer_add_u32(reply, ntohl(LIBSFTP_VERSION)) < 0) {
+    ssh_set_error_oom(session);
     buffer_free(reply);
     sftp_leave_function();
     return -1;
@@ -173,8 +234,8 @@ int sftp_server_init(SFTP_SESSION *sftp){
 }
 #endif /* WITH_SERVER */
 
-void sftp_free(SFTP_SESSION *sftp){
-  struct request_queue *ptr;
+void sftp_free(sftp_session sftp){
+  sftp_request_queue ptr;
 
   if (sftp == NULL) {
     return;
@@ -183,7 +244,7 @@ void sftp_free(SFTP_SESSION *sftp){
   channel_send_eof(sftp->channel);
   ptr = sftp->queue;
   while(ptr) {
-    struct request_queue *old;
+    sftp_request_queue old;
     sftp_message_free(ptr->message);
     old = ptr->next;
     SAFE_FREE(ptr);
@@ -191,20 +252,23 @@ void sftp_free(SFTP_SESSION *sftp){
   }
 
   channel_free(sftp->channel);
-  memset(sftp, 0, sizeof(*sftp));
+  sftp_ext_free(sftp->ext);
+  ZERO_STRUCTP(sftp);
 
   SAFE_FREE(sftp);
 }
 
-int sftp_packet_write(SFTP_SESSION *sftp,u8 type, BUFFER *payload){
+int sftp_packet_write(sftp_session sftp, uint8_t type, ssh_buffer payload){
   int size;
 
-  if (buffer_prepend_data(payload, &type, sizeof(u8)) < 0) {
+  if (buffer_prepend_data(payload, &type, sizeof(uint8_t)) < 0) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   size = htonl(buffer_get_len(payload));
-  if (buffer_prepend_data(payload, &size, sizeof(u32)) < 0) {
+  if (buffer_prepend_data(payload, &size, sizeof(uint32_t)) < 0) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
@@ -212,7 +276,7 @@ int sftp_packet_write(SFTP_SESSION *sftp,u8 type, BUFFER *payload){
       buffer_get_len(payload));
   if (size < 0) {
     return -1;
-  } else if((u32) size != buffer_get_len(payload)) {
+  } else if((uint32_t) size != buffer_get_len(payload)) {
     ssh_log(sftp->session, SSH_LOG_PACKET,
         "Had to write %d bytes, wrote only %d",
         buffer_get_len(payload),
@@ -222,19 +286,21 @@ int sftp_packet_write(SFTP_SESSION *sftp,u8 type, BUFFER *payload){
   return size;
 }
 
-SFTP_PACKET *sftp_packet_read(SFTP_SESSION *sftp) {
-  SFTP_PACKET *packet = NULL;
-  u32 size;
+sftp_packet sftp_packet_read(sftp_session sftp) {
+  sftp_packet packet = NULL;
+  uint32_t size;
 
   sftp_enter_function();
 
-  packet = malloc(sizeof(SFTP_PACKET));
+  packet = malloc(sizeof(struct sftp_packet_struct));
   if (packet == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
   packet->sftp = sftp;
   packet->payload = buffer_new();
   if (packet->payload == NULL) {
+    ssh_set_error_oom(sftp->session);
     SAFE_FREE(packet);
     return NULL;
   }
@@ -246,7 +312,8 @@ SFTP_PACKET *sftp_packet_read(SFTP_SESSION *sftp) {
     return NULL;
   }
 
-  if (buffer_get_u32(packet->payload, &size) < 0) {
+  if (buffer_get_u32(packet->payload, &size) != sizeof(uint32_t)) {
+    ssh_set_error(sftp->session, SSH_FATAL, "Short sftp packet!");
     buffer_free(packet->payload);
     SAFE_FREE(packet);
     sftp_leave_function();
@@ -255,6 +322,7 @@ SFTP_PACKET *sftp_packet_read(SFTP_SESSION *sftp) {
 
   size = ntohl(size);
   if (channel_read_buffer(sftp->channel, packet->payload, 1, 0) <= 0) {
+    /* TODO: check if there are cases where an error needs to be set here */
     buffer_free(packet->payload);
     SAFE_FREE(packet);
     sftp_leave_function();
@@ -264,6 +332,7 @@ SFTP_PACKET *sftp_packet_read(SFTP_SESSION *sftp) {
   buffer_get_u8(packet->payload, &packet->type);
   if (size > 1) {
     if (channel_read_buffer(sftp->channel, packet->payload, size - 1, 0) <= 0) {
+      /* TODO: check if there are cases where an error needs to be set here */
       buffer_free(packet->payload);
       SAFE_FREE(packet);
       sftp_leave_function();
@@ -275,14 +344,14 @@ SFTP_PACKET *sftp_packet_read(SFTP_SESSION *sftp) {
   return packet;
 }
 
-static void sftp_set_error(SFTP_SESSION *sftp, int errnum) {
+static void sftp_set_error(sftp_session sftp, int errnum) {
   if (sftp != NULL) {
     sftp->errnum = errnum;
   }
 }
 
 /* Get the last sftp error */
-int sftp_get_error(SFTP_SESSION *sftp) {
+int sftp_get_error(sftp_session sftp) {
   if (sftp == NULL) {
     return -1;
   }
@@ -290,19 +359,21 @@ int sftp_get_error(SFTP_SESSION *sftp) {
   return sftp->errnum;
 }
 
-static SFTP_MESSAGE *sftp_message_new(SFTP_SESSION *sftp){
-  SFTP_MESSAGE *msg = NULL;
+static sftp_message sftp_message_new(sftp_session sftp){
+  sftp_message msg = NULL;
 
   sftp_enter_function();
 
-  msg = malloc(sizeof(SFTP_MESSAGE));
+  msg = malloc(sizeof(struct sftp_message_struct));
   if (msg == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
   ZERO_STRUCTP(msg);
 
   msg->payload = buffer_new();
   if (msg->payload == NULL) {
+    ssh_set_error_oom(sftp->session);
     SAFE_FREE(msg);
     return NULL;
   }
@@ -312,8 +383,8 @@ static SFTP_MESSAGE *sftp_message_new(SFTP_SESSION *sftp){
   return msg;
 }
 
-static void sftp_message_free(SFTP_MESSAGE *msg) {
-  SFTP_SESSION *sftp;
+static void sftp_message_free(sftp_message msg) {
+  sftp_session sftp;
 
   if (msg == NULL) {
     return;
@@ -328,9 +399,9 @@ static void sftp_message_free(SFTP_MESSAGE *msg) {
   sftp_leave_function();
 }
 
-static SFTP_MESSAGE *sftp_get_message(SFTP_PACKET *packet) {
-  SFTP_SESSION *sftp = packet->sftp;
-  SFTP_MESSAGE *msg = NULL;
+static sftp_message sftp_get_message(sftp_packet packet) {
+  sftp_session sftp = packet->sftp;
+  sftp_message msg = NULL;
 
   sftp_enter_function();
 
@@ -345,15 +416,15 @@ static SFTP_MESSAGE *sftp_get_message(SFTP_PACKET *packet) {
 
   if ((packet->type != SSH_FXP_STATUS) && (packet->type!=SSH_FXP_HANDLE) &&
       (packet->type != SSH_FXP_DATA) && (packet->type != SSH_FXP_ATTRS) &&
-      (packet->type != SSH_FXP_NAME)) {
-    ssh_set_error(packet->sftp->session, SSH_FATAL, 
+      (packet->type != SSH_FXP_NAME) && (packet->type != SSH_FXP_EXTENDED_REPLY)) {
+    ssh_set_error(packet->sftp->session, SSH_FATAL,
         "Unknown packet type %d", packet->type);
     sftp_message_free(msg);
     sftp_leave_function();
     return NULL;
   }
 
-  if (buffer_get_u32(packet->payload, &msg->id) != sizeof(u32)) {
+  if (buffer_get_u32(packet->payload, &msg->id) != sizeof(uint32_t)) {
     ssh_set_error(packet->sftp->session, SSH_FATAL,
         "Invalid packet %d: no ID", packet->type);
     sftp_message_free(msg);
@@ -368,6 +439,7 @@ static SFTP_MESSAGE *sftp_get_message(SFTP_PACKET *packet) {
 
   if (buffer_add_data(msg->payload, buffer_get_rest(packet->payload),
         buffer_get_rest_len(packet->payload)) < 0) {
+    ssh_set_error_oom(sftp->session);
     sftp_message_free(msg);
     sftp_leave_function();
     return NULL;
@@ -377,9 +449,9 @@ static SFTP_MESSAGE *sftp_get_message(SFTP_PACKET *packet) {
   return msg;
 }
 
-static int sftp_read_and_dispatch(SFTP_SESSION *sftp) {
-  SFTP_PACKET *packet = NULL;
-  SFTP_MESSAGE *msg = NULL;
+static int sftp_read_and_dispatch(sftp_session sftp) {
+  sftp_packet packet = NULL;
+  sftp_message msg = NULL;
 
   sftp_enter_function();
 
@@ -406,7 +478,7 @@ static int sftp_read_and_dispatch(SFTP_SESSION *sftp) {
   return 0;
 }
 
-void sftp_packet_free(SFTP_PACKET *packet) {
+void sftp_packet_free(sftp_packet packet) {
   if (packet == NULL) {
     return;
   }
@@ -416,25 +488,31 @@ void sftp_packet_free(SFTP_PACKET *packet) {
 }
 
 /* Initialize the sftp session with the server. */
-int sftp_init(SFTP_SESSION *sftp) {
-  SFTP_PACKET *packet = NULL;
-  BUFFER *buffer = NULL;
-  STRING *ext_name_s = NULL;
-  STRING *ext_data_s = NULL;
+int sftp_init(sftp_session sftp) {
+  sftp_packet packet = NULL;
+  ssh_buffer buffer = NULL;
+  ssh_string ext_name_s = NULL;
+  ssh_string ext_data_s = NULL;
   char *ext_name = NULL;
   char *ext_data = NULL;
-  u32 version = htonl(LIBSFTP_VERSION);
+  uint32_t version = htonl(LIBSFTP_VERSION);
 
   sftp_enter_function();
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     sftp_leave_function();
     return -1;
   }
 
-  if ((buffer_add_u32(buffer, version) < 0) ||
-      sftp_packet_write(sftp, SSH_FXP_INIT, buffer) < 0) {
+  if (buffer_add_u32(buffer, version) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    sftp_leave_function();
+    return -1;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_INIT, buffer) < 0) {
     buffer_free(buffer);
     sftp_leave_function();
     return -1;
@@ -455,47 +533,141 @@ int sftp_init(SFTP_SESSION *sftp) {
     return -1;
   }
 
-  buffer_get_u32(packet->payload,&version);
+  /* TODO: are we sure there are 4 bytes ready? */
+  buffer_get_u32(packet->payload, &version);
   version = ntohl(version);
+  ssh_log(sftp->session, SSH_LOG_RARE,
+      "SFTP server version %d",
+      version);
 
   ext_name_s = buffer_get_ssh_string(packet->payload);
-  ext_data_s = buffer_get_ssh_string(packet->payload);
-  if (ext_name_s == NULL || (ext_data_s == NULL)) {
-    string_free(ext_name_s);
-    string_free(ext_data_s);
-    ssh_log(sftp->session, SSH_LOG_RARE,
-        "SFTP server version %d", version);
-  } else {
+  while (ext_name_s != NULL) {
+    int count = sftp->ext->count;
+    char **tmp;
+
+    ext_data_s = buffer_get_ssh_string(packet->payload);
+    if (ext_data_s == NULL) {
+      string_free(ext_name_s);
+      break;
+    }
+
     ext_name = string_to_char(ext_name_s);
     ext_data = string_to_char(ext_data_s);
-
-    if (ext_name != NULL || ext_data != NULL) {
-      ssh_log(sftp->session, SSH_LOG_RARE,
-          "SFTP server version %d (%s,%s)",
-          version, ext_name, ext_data);
-    } else {
-      ssh_log(sftp->session, SSH_LOG_RARE,
-          "SFTP server version %d", version);
+    if (ext_name == NULL || ext_data == NULL) {
+      ssh_set_error_oom(sftp->session);
+      SAFE_FREE(ext_name);
+      SAFE_FREE(ext_data);
+      string_free(ext_name_s);
+      string_free(ext_data_s);
+      return -1;
     }
-    SAFE_FREE(ext_name);
-    SAFE_FREE(ext_data);
+    ssh_log(sftp->session, SSH_LOG_RARE,
+        "SFTP server extension: %s, version: %s",
+        ext_name, ext_data);
+
+    count++;
+    tmp = realloc(sftp->ext->name, count * sizeof(char *));
+    if (tmp == NULL) {
+      ssh_set_error_oom(sftp->session);
+      SAFE_FREE(ext_name);
+      SAFE_FREE(ext_data);
+      string_free(ext_name_s);
+      string_free(ext_data_s);
+      return -1;
+    }
+    tmp[count - 1] = ext_name;
+    sftp->ext->name = tmp;
+
+    tmp = realloc(sftp->ext->data, count * sizeof(char *));
+    if (tmp == NULL) {
+      ssh_set_error_oom(sftp->session);
+      SAFE_FREE(ext_name);
+      SAFE_FREE(ext_data);
+      string_free(ext_name_s);
+      string_free(ext_data_s);
+      return -1;
+    }
+    tmp[count - 1] = ext_data;
+    sftp->ext->data = tmp;
+
+    sftp->ext->count = count;
+
+    string_free(ext_name_s);
+    string_free(ext_data_s);
+
+    ext_name_s = buffer_get_ssh_string(packet->payload);
   }
-  string_free(ext_name_s);
-  string_free(ext_data_s);
 
   sftp_packet_free(packet);
 
   sftp->version = sftp->server_version = version;
 
   sftp_leave_function();
+
   return 0;
 }
 
-static REQUEST_QUEUE *request_queue_new(SFTP_MESSAGE *msg) {
-  REQUEST_QUEUE *queue = NULL;
+unsigned int sftp_extensions_get_count(sftp_session sftp) {
+  if (sftp == NULL || sftp->ext == NULL) {
+    return 0;
+  }
 
-  queue = malloc(sizeof(REQUEST_QUEUE));
+  return sftp->ext->count;
+}
+
+const char *sftp_extensions_get_name(sftp_session sftp, unsigned int idx) {
+  if (sftp == NULL)
+    return NULL;
+  if (sftp->ext == NULL || sftp->ext->name == NULL) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
+    return NULL;
+  }
+
+  if (idx > sftp->ext->count) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
+    return NULL;
+  }
+
+  return sftp->ext->name[idx];
+}
+
+const char *sftp_extensions_get_data(sftp_session sftp, unsigned int idx) {
+  if (sftp == NULL)
+    return NULL;
+  if (sftp->ext == NULL || sftp->ext->name == NULL) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
+    return NULL;
+  }
+
+  if (idx > sftp->ext->count) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
+    return NULL;
+  }
+
+  return sftp->ext->data[idx];
+}
+
+int sftp_extension_supported(sftp_session sftp, const char *name,
+    const char *data) {
+  int i, n;
+
+  n = sftp_extensions_get_count(sftp);
+  for (i = 0; i < n; i++) {
+    if (strcmp(sftp_extensions_get_name(sftp, i), name) == 0 &&
+        strcmp(sftp_extensions_get_data(sftp, i), data) == 0) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+static sftp_request_queue request_queue_new(sftp_message msg) {
+  sftp_request_queue queue = NULL;
+
+  queue = malloc(sizeof(struct sftp_request_queue_struct));
   if (queue == NULL) {
+    ssh_set_error_oom(msg->sftp->session);
     return NULL;
   }
   ZERO_STRUCTP(queue);
@@ -505,7 +677,7 @@ static REQUEST_QUEUE *request_queue_new(SFTP_MESSAGE *msg) {
   return queue;
 }
 
-static void request_queue_free(REQUEST_QUEUE *queue) {
+static void request_queue_free(sftp_request_queue queue) {
   if (queue == NULL) {
     return;
   }
@@ -514,9 +686,9 @@ static void request_queue_free(REQUEST_QUEUE *queue) {
   SAFE_FREE(queue);
 }
 
-static int sftp_enqueue(SFTP_SESSION *sftp, SFTP_MESSAGE *msg) {
-  REQUEST_QUEUE *queue = NULL;
-  REQUEST_QUEUE *ptr;
+static int sftp_enqueue(sftp_session sftp, sftp_message msg) {
+  sftp_request_queue queue = NULL;
+  sftp_request_queue ptr;
 
   queue = request_queue_new(msg);
   if (queue == NULL) {
@@ -544,10 +716,10 @@ static int sftp_enqueue(SFTP_SESSION *sftp, SFTP_MESSAGE *msg) {
  * Pulls of a message from the queue based on the ID.
  * Returns NULL if no message has been found.
  */
-static SFTP_MESSAGE *sftp_dequeue(SFTP_SESSION *sftp, u32 id){
-  REQUEST_QUEUE *prev = NULL;
-  REQUEST_QUEUE *queue;
-  SFTP_MESSAGE *msg;
+static sftp_message sftp_dequeue(sftp_session sftp, uint32_t id){
+  sftp_request_queue prev = NULL;
+  sftp_request_queue queue;
+  sftp_message msg;
 
   if(sftp->queue == NULL) {
     return NULL;
@@ -582,12 +754,12 @@ static SFTP_MESSAGE *sftp_dequeue(SFTP_SESSION *sftp, u32 id){
  * between them.
  * Returns a new ID ready to use in a request
  */
-static inline u32 sftp_get_new_id(SFTP_SESSION *session) {
+static inline uint32_t sftp_get_new_id(sftp_session session) {
   return ++session->id_counter;
 }
 
-static STATUS_MESSAGE *parse_status_msg(SFTP_MESSAGE *msg){
-  STATUS_MESSAGE *status;
+static sftp_status_message parse_status_msg(sftp_message msg){
+  sftp_status_message status;
 
   if (msg->packet_type != SSH_FXP_STATUS) {
     ssh_set_error(msg->sftp->session, SSH_FATAL,
@@ -595,28 +767,45 @@ static STATUS_MESSAGE *parse_status_msg(SFTP_MESSAGE *msg){
     return NULL;
   }
 
-  status = malloc(sizeof(STATUS_MESSAGE));
+  status = malloc(sizeof(struct sftp_status_message_struct));
   if (status == NULL) {
+    ssh_set_error_oom(msg->sftp->session);
     return NULL;
   }
   ZERO_STRUCTP(status);
 
   status->id = msg->id;
-  if ((buffer_get_u32(msg->payload,&status->status) != 4) ||
-      (status->error = buffer_get_ssh_string(msg->payload)) == NULL ||
-      (status->lang = buffer_get_ssh_string(msg->payload)) == NULL) {
-    string_free(status->error);
-    /* status->lang never get allocated if something failed */
+  if (buffer_get_u32(msg->payload,&status->status) != 4){
     SAFE_FREE(status);
     ssh_set_error(msg->sftp->session, SSH_FATAL,
         "Invalid SSH_FXP_STATUS message");
     return NULL;
   }
+  status->error = buffer_get_ssh_string(msg->payload);
+  status->lang = buffer_get_ssh_string(msg->payload);
+  if(status->error == NULL || status->lang == NULL){
+    if(msg->sftp->version >=3){
+      /* These are mandatory from version 3 */
+      string_free(status->error);
+    /* status->lang never get allocated if something failed */
+      SAFE_FREE(status);
+      ssh_set_error(msg->sftp->session, SSH_FATAL,
+        "Invalid SSH_FXP_STATUS message");
+      return NULL;
+    }
+  }
 
   status->status = ntohl(status->status);
-  status->errormsg = string_to_char(status->error);
-  status->langmsg = string_to_char(status->lang);
+  if(status->error)
+    status->errormsg = string_to_char(status->error);
+  else
+    status->errormsg = strdup("No error message in packet");
+  if(status->lang)
+    status->langmsg = string_to_char(status->lang);
+  else
+    status->langmsg = strdup("");
   if (status->errormsg == NULL || status->langmsg == NULL) {
+    ssh_set_error_oom(msg->sftp->session);
     status_msg_free(status);
     return NULL;
   }
@@ -624,7 +813,7 @@ static STATUS_MESSAGE *parse_status_msg(SFTP_MESSAGE *msg){
   return status;
 }
 
-static void status_msg_free(STATUS_MESSAGE *status){
+static void status_msg_free(sftp_status_message status){
   if (status == NULL) {
     return;
   }
@@ -636,8 +825,8 @@ static void status_msg_free(STATUS_MESSAGE *status){
   SAFE_FREE(status);
 }
 
-static SFTP_FILE *parse_handle_msg(SFTP_MESSAGE *msg){
-  SFTP_FILE *file;
+static sftp_file parse_handle_msg(sftp_message msg){
+  sftp_file file;
 
   if(msg->packet_type != SSH_FXP_HANDLE) {
     ssh_set_error(msg->sftp->session, SSH_FATAL,
@@ -645,8 +834,9 @@ static SFTP_FILE *parse_handle_msg(SFTP_MESSAGE *msg){
     return NULL;
   }
 
-  file = malloc(sizeof(SFTP_FILE));
+  file = malloc(sizeof(struct sftp_file_struct));
   if (file == NULL) {
+    ssh_set_error_oom(msg->sftp->session);
     return NULL;
   }
   ZERO_STRUCTP(file);
@@ -667,22 +857,24 @@ static SFTP_FILE *parse_handle_msg(SFTP_MESSAGE *msg){
 }
 
 /* Open a directory */
-SFTP_DIR *sftp_opendir(SFTP_SESSION *sftp, const char *path){
-  SFTP_MESSAGE *msg = NULL;
-  SFTP_FILE *file = NULL;
-  SFTP_DIR *dir = NULL;
-  STATUS_MESSAGE *status;
-  STRING *path_s;
-  BUFFER *payload;
-  u32 id;
+sftp_dir sftp_opendir(sftp_session sftp, const char *path){
+  sftp_message msg = NULL;
+  sftp_file file = NULL;
+  sftp_dir dir = NULL;
+  sftp_status_message status;
+  ssh_string path_s;
+  ssh_buffer payload;
+  uint32_t id;
 
   payload = buffer_new();
   if (payload == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
 
   path_s = string_from_char(path);
   if (path_s == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(payload);
     return NULL;
   }
@@ -690,6 +882,7 @@ SFTP_DIR *sftp_opendir(SFTP_SESSION *sftp, const char *path){
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(payload, id) < 0 ||
       buffer_add_ssh_string(payload, path_s) < 0) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(payload);
     string_free(path_s);
     return NULL;
@@ -726,8 +919,9 @@ SFTP_DIR *sftp_opendir(SFTP_SESSION *sftp, const char *path){
       file = parse_handle_msg(msg);
       sftp_message_free(msg);
       if (file != NULL) {
-        dir = malloc(sizeof(SFTP_DIR));
+        dir = malloc(sizeof(struct sftp_dir_struct));
         if (dir == NULL) {
+          ssh_set_error_oom(sftp->session);
           return NULL;
         }
         ZERO_STRUCTP(dir);
@@ -757,19 +951,20 @@ SFTP_DIR *sftp_opendir(SFTP_SESSION *sftp, const char *path){
  * baselines from the protocol version 4.
  * This code is more or less dead but maybe we need it in future.
  */
-static SFTP_ATTRIBUTES *sftp_parse_attr_4(SFTP_SESSION *sftp, BUFFER *buf,
+static sftp_attributes sftp_parse_attr_4(sftp_session sftp, ssh_buffer buf,
     int expectnames) {
-  SFTP_ATTRIBUTES *attr;
-  STRING *owner = NULL;
-  STRING *group = NULL;
-  u32 flags = 0;
+  sftp_attributes attr;
+  ssh_string owner = NULL;
+  ssh_string group = NULL;
+  uint32_t flags = 0;
   int ok = 0;
 
   /* unused member variable */
   (void) expectnames;
 
-  attr = malloc(sizeof(SFTP_ATTRIBUTES));
+  attr = malloc(sizeof(struct sftp_attributes_struct));
   if (attr == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
   ZERO_STRUCTP(attr);
@@ -807,7 +1002,6 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_4(SFTP_SESSION *sftp, BUFFER *buf,
       }
       attr->permissions = ntohl(attr->permissions);
 
-#ifndef _WIN32
       /* FIXME on windows! */
       switch (attr->permissions & S_IFMT) {
         case S_IFSOCK:
@@ -829,7 +1023,6 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_4(SFTP_SESSION *sftp, BUFFER *buf,
           attr->type = SSH_FILEXFER_TYPE_UNKNOWN;
           break;
       }
-#endif /* _WIN32 */
     }
 
     if (flags & SSH_FILEXFER_ATTR_ACCESSTIME) {
@@ -918,7 +1111,7 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_4(SFTP_SESSION *sftp, BUFFER *buf,
   return attr;
 }
 
-/* Version 3 code. it is the only one really supported (the draft for the 4 misses clarifications) */
+/* sftp version 0-3 code. It is different from the v4 */
 /* maybe a paste of the draft is better than the code */
 /*
         uint32   flags
@@ -933,16 +1126,17 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_4(SFTP_SESSION *sftp, BUFFER *buf,
         string   extended_data
         ...      more extended data (extended_type - extended_data pairs),
                    so that number of pairs equals extended_count              */
-static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
+static sftp_attributes sftp_parse_attr_3(sftp_session sftp, ssh_buffer buf,
     int expectname) {
-  STRING *longname = NULL;
-  STRING *name = NULL;
-  SFTP_ATTRIBUTES *attr;
-  u32 flags = 0;
+  ssh_string longname = NULL;
+  ssh_string name = NULL;
+  sftp_attributes attr;
+  uint32_t flags = 0;
   int ok = 0;
 
-  attr = malloc(sizeof(SFTP_ATTRIBUTES));
+  attr = malloc(sizeof(struct sftp_attributes_struct));
   if (attr == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
   ZERO_STRUCTP(attr);
@@ -965,7 +1159,7 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
       string_free(longname);
     }
 
-    if (buffer_get_u32(buf, &flags) != sizeof(u32)) {
+    if (buffer_get_u32(buf, &flags) != sizeof(uint32_t)) {
       break;
     }
     flags = ntohl(flags);
@@ -974,7 +1168,7 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
         "Flags: %.8lx\n", (long unsigned int) flags);
 
     if (flags & SSH_FILEXFER_ATTR_SIZE) {
-      if(buffer_get_u64(buf, &attr->size) != sizeof(u64)) {
+      if(buffer_get_u64(buf, &attr->size) != sizeof(uint64_t)) {
         break;
       }
       attr->size = ntohll(attr->size);
@@ -984,10 +1178,10 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
     }
 
     if (flags & SSH_FILEXFER_ATTR_UIDGID) {
-      if (buffer_get_u32(buf, &attr->uid) != sizeof(u32)) {
+      if (buffer_get_u32(buf, &attr->uid) != sizeof(uint32_t)) {
         break;
       }
-      if (buffer_get_u32(buf, &attr->gid) != sizeof(u32)) {
+      if (buffer_get_u32(buf, &attr->gid) != sizeof(uint32_t)) {
         break;
       }
       attr->uid = ntohl(attr->uid);
@@ -995,13 +1189,11 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
     }
 
     if (flags & SSH_FILEXFER_ATTR_PERMISSIONS) {
-      if (buffer_get_u32(buf, &attr->permissions) != sizeof(u32)) {
+      if (buffer_get_u32(buf, &attr->permissions) != sizeof(uint32_t)) {
         break;
       }
       attr->permissions = ntohl(attr->permissions);
 
-#ifndef _WIN32
-      /* FIXME on windows */
       switch (attr->permissions & S_IFMT) {
         case S_IFSOCK:
         case S_IFBLK:
@@ -1022,22 +1214,21 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
           attr->type = SSH_FILEXFER_TYPE_UNKNOWN;
           break;
       }
-#endif /* _WIN32 */
     }
 
     if (flags & SSH_FILEXFER_ATTR_ACMODTIME) {
-      if (buffer_get_u32(buf, &attr->atime) != sizeof(u32)) {
+      if (buffer_get_u32(buf, &attr->atime) != sizeof(uint32_t)) {
         break;
       }
       attr->atime = ntohl(attr->atime);
-      if (buffer_get_u32(buf, &attr->mtime) != sizeof(u32)) {
+      if (buffer_get_u32(buf, &attr->mtime) != sizeof(uint32_t)) {
         break;
       }
       attr->mtime = ntohl(attr->mtime);
     }
 
     if (flags & SSH_FILEXFER_ATTR_EXTENDED) {
-      if (buffer_get_u32(buf, &attr->extended_count) != sizeof(u32)) {
+      if (buffer_get_u32(buf, &attr->extended_count) != sizeof(uint32_t)) {
         break;
       }
 
@@ -1075,8 +1266,8 @@ static SFTP_ATTRIBUTES *sftp_parse_attr_3(SFTP_SESSION *sftp, BUFFER *buf,
 }
 
 /* FIXME is this really needed as a public function? */
-int buffer_add_attributes(BUFFER *buffer, SFTP_ATTRIBUTES *attr) {
-  u32 flags = (attr ? attr->flags : 0);
+int buffer_add_attributes(ssh_buffer buffer, sftp_attributes attr) {
+  uint32_t flags = (attr ? attr->flags : 0);
 
   flags &= (SSH_FILEXFER_ATTR_SIZE | SSH_FILEXFER_ATTR_UIDGID |
       SSH_FILEXFER_ATTR_PERMISSIONS | SSH_FILEXFER_ATTR_ACMODTIME);
@@ -1117,12 +1308,15 @@ int buffer_add_attributes(BUFFER *buffer, SFTP_ATTRIBUTES *attr) {
 }
 
 
-SFTP_ATTRIBUTES *sftp_parse_attr(SFTP_SESSION *session, BUFFER *buf,
+sftp_attributes sftp_parse_attr(sftp_session session, ssh_buffer buf,
     int expectname) {
   switch(session->version) {
     case 4:
       return sftp_parse_attr_4(session, buf, expectname);
     case 3:
+    case 2:
+    case 1:
+    case 0:
       return sftp_parse_attr_3(session, buf, expectname);
     default:
       ssh_set_error(session->session, SSH_FATAL,
@@ -1134,27 +1328,29 @@ SFTP_ATTRIBUTES *sftp_parse_attr(SFTP_SESSION *session, BUFFER *buf,
 }
 
 /* Get the version of the SFTP protocol supported by the server */
-int sftp_server_version(SFTP_SESSION *sftp) {
+int sftp_server_version(sftp_session sftp) {
   return sftp->server_version;
 }
 
 /* Get a single file attributes structure of a directory. */
-SFTP_ATTRIBUTES *sftp_readdir(SFTP_SESSION *sftp, SFTP_DIR *dir) {
-  SFTP_MESSAGE *msg = NULL;
-  STATUS_MESSAGE *status;
-  SFTP_ATTRIBUTES *attr;
-  BUFFER *payload;
-  u32 id;
+sftp_attributes sftp_readdir(sftp_session sftp, sftp_dir dir) {
+  sftp_message msg = NULL;
+  sftp_status_message status;
+  sftp_attributes attr;
+  ssh_buffer payload;
+  uint32_t id;
 
   if (dir->buffer == NULL) {
     payload = buffer_new();
     if (payload == NULL) {
+      ssh_set_error_oom(sftp->session);
       return NULL;
     }
 
     id = sftp_get_new_id(sftp);
     if (buffer_add_u32(payload, id) < 0 ||
         buffer_add_ssh_string(payload, dir->handle) < 0) {
+      ssh_set_error_oom(sftp->session);
       buffer_free(payload);
       return NULL;
     }
@@ -1241,12 +1437,12 @@ SFTP_ATTRIBUTES *sftp_readdir(SFTP_SESSION *sftp, SFTP_DIR *dir) {
 }
 
 /* Tell if the directory has reached EOF (End Of File). */
-int sftp_dir_eof(SFTP_DIR *dir) {
+int sftp_dir_eof(sftp_dir dir) {
   return dir->eof;
 }
 
 /* Free a SFTP_ATTRIBUTE handle */
-void sftp_attributes_free(SFTP_ATTRIBUTES *file){
+void sftp_attributes_free(sftp_attributes file){
   if (file == NULL) {
     return;
   }
@@ -1263,21 +1459,26 @@ void sftp_attributes_free(SFTP_ATTRIBUTES *file){
   SAFE_FREE(file);
 }
 
-static int sftp_handle_close(SFTP_SESSION *sftp, STRING *handle) {
-  STATUS_MESSAGE *status;
-  SFTP_MESSAGE *msg = NULL;
-  BUFFER *buffer = NULL;
-  u32 id;
+static int sftp_handle_close(sftp_session sftp, ssh_string handle) {
+  sftp_status_message status;
+  sftp_message msg = NULL;
+  ssh_buffer buffer = NULL;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, handle) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_CLOSE ,buffer) < 0) {
+      buffer_add_ssh_string(buffer, handle) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    return -1;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_CLOSE ,buffer) < 0) {
     buffer_free(buffer);
     return -1;
   }
@@ -1320,12 +1521,8 @@ static int sftp_handle_close(SFTP_SESSION *sftp, STRING *handle) {
   return -1;
 }
 
-int sftp_file_close(SFTP_FILE *file) {
-  return sftp_close(file);
-}
-
 /* Close an open file handle. */
-int sftp_close(SFTP_FILE *file){
+int sftp_close(sftp_file file){
   int err = SSH_NO_ERROR;
 
   SAFE_FREE(file->name);
@@ -1339,12 +1536,8 @@ int sftp_close(SFTP_FILE *file){
   return err;
 }
 
-int sftp_dir_close(SFTP_DIR *dir) {
-  return sftp_closedir(dir);
-}
-
 /* Close an open directory. */
-int sftp_closedir(SFTP_DIR *dir){
+int sftp_closedir(sftp_dir dir){
   int err = SSH_NO_ERROR;
 
   SAFE_FREE(dir->name);
@@ -1360,24 +1553,26 @@ int sftp_closedir(SFTP_DIR *dir){
 }
 
 /* Open a file on the server. */
-SFTP_FILE *sftp_open(SFTP_SESSION *sftp, const char *file, int flags,
+sftp_file sftp_open(sftp_session sftp, const char *file, int flags,
     mode_t mode) {
-  SFTP_MESSAGE *msg = NULL;
-  STATUS_MESSAGE *status;
-  SFTP_ATTRIBUTES attr;
-  SFTP_FILE *handle;
-  STRING *filename;
-  BUFFER *buffer;
-  u32 sftp_flags = 0;
-  u32 id;
+  sftp_message msg = NULL;
+  sftp_status_message status;
+  struct sftp_attributes_struct attr;
+  sftp_file handle;
+  ssh_string filename;
+  ssh_buffer buffer;
+  uint32_t sftp_flags = 0;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
 
   filename = string_from_char(file);
   if (filename == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return NULL;
   }
@@ -1399,10 +1594,11 @@ SFTP_FILE *sftp_open(SFTP_SESSION *sftp, const char *file, int flags,
     sftp_flags |= SSH_FXF_TRUNC;
   if (flags & O_EXCL)
     sftp_flags |= SSH_FXF_EXCL;
-
+  ssh_log(sftp->session,SSH_LOG_PACKET,"Opening file %s with sftp flags %x",file,sftp_flags);
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
       buffer_add_ssh_string(buffer, filename) < 0) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     string_free(filename);
     return NULL;
@@ -1410,8 +1606,12 @@ SFTP_FILE *sftp_open(SFTP_SESSION *sftp, const char *file, int flags,
   string_free(filename);
 
   if (buffer_add_u32(buffer, htonl(sftp_flags)) < 0 ||
-      buffer_add_attributes(buffer, &attr) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_OPEN, buffer) < 0) {
+      buffer_add_attributes(buffer, &attr) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    return NULL;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_OPEN, buffer) < 0) {
     buffer_free(buffer);
     return NULL;
   }
@@ -1451,20 +1651,20 @@ SFTP_FILE *sftp_open(SFTP_SESSION *sftp, const char *file, int flags,
   return NULL;
 }
 
-void sftp_file_set_nonblocking(SFTP_FILE *handle){
+void sftp_file_set_nonblocking(sftp_file handle){
     handle->nonblocking=1;
 }
-void sftp_file_set_blocking(SFTP_FILE *handle){
+void sftp_file_set_blocking(sftp_file handle){
     handle->nonblocking=0;
 }
 
 /* Read from a file using an opened sftp file handle. */
-ssize_t sftp_read(SFTP_FILE *handle, void *buf, size_t count) {
-  SFTP_SESSION *sftp = handle->sftp;
-  SFTP_MESSAGE *msg = NULL;
-  STATUS_MESSAGE *status;
-  STRING *datastring;
-  BUFFER *buffer;
+ssize_t sftp_read(sftp_file handle, void *buf, size_t count) {
+  sftp_session sftp = handle->sftp;
+  sftp_message msg = NULL;
+  sftp_status_message status;
+  ssh_string datastring;
+  ssh_buffer buffer;
   int id;
 
   if (handle->eof) {
@@ -1473,14 +1673,19 @@ ssize_t sftp_read(SFTP_FILE *handle, void *buf, size_t count) {
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
   id = sftp_get_new_id(handle->sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
       buffer_add_ssh_string(buffer, handle->handle) < 0 ||
       buffer_add_u64(buffer, htonll(handle->offset)) < 0 ||
-      buffer_add_u32(buffer,htonl(count)) < 0 ||
-      sftp_packet_write(handle->sftp, SSH_FXP_READ, buffer) < 0) {
+      buffer_add_u32(buffer,htonl(count)) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    return -1;
+  }
+  if (sftp_packet_write(handle->sftp, SSH_FXP_READ, buffer) < 0) {
     buffer_free(buffer);
     return -1;
   }
@@ -1539,7 +1744,7 @@ ssize_t sftp_read(SFTP_FILE *handle, void *buf, size_t count) {
       }
       count = string_len(datastring);
       handle->offset += count;
-      memcpy(buf, datastring->string, count);
+      memcpy(buf, string_data(datastring), count);
       string_free(datastring);
       return count;
     default:
@@ -1553,15 +1758,16 @@ ssize_t sftp_read(SFTP_FILE *handle, void *buf, size_t count) {
 }
 
 /* Start an asynchronous read from a file using an opened sftp file handle. */
-int sftp_async_read_begin(SFTP_FILE *file, u32 len){
-  SFTP_SESSION *sftp = file->sftp;
-  BUFFER *buffer;
-  u32 id;
+int sftp_async_read_begin(sftp_file file, uint32_t len){
+  sftp_session sftp = file->sftp;
+  ssh_buffer buffer;
+  uint32_t id;
 
   sftp_enter_function();
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
@@ -1569,8 +1775,12 @@ int sftp_async_read_begin(SFTP_FILE *file, u32 len){
   if (buffer_add_u32(buffer, id) < 0 ||
       buffer_add_ssh_string(buffer, file->handle) < 0 ||
       buffer_add_u64(buffer, htonll(file->offset)) < 0 ||
-      buffer_add_u32(buffer, htonl(len)) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_READ, buffer) < 0) {
+      buffer_add_u32(buffer, htonl(len)) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    return -1;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_READ, buffer) < 0) {
     buffer_free(buffer);
     return -1;
   }
@@ -1583,13 +1793,13 @@ int sftp_async_read_begin(SFTP_FILE *file, u32 len){
 }
 
 /* Wait for an asynchronous read to complete and save the data. */
-int sftp_async_read(SFTP_FILE *file, void *data, u32 size, u32 id){
-  SFTP_SESSION *sftp = file->sftp;
-  SFTP_MESSAGE *msg = NULL;
-  STATUS_MESSAGE *status;
-  STRING *datastring;
+int sftp_async_read(sftp_file file, void *data, uint32_t size, uint32_t id){
+  sftp_session sftp = file->sftp;
+  sftp_message msg = NULL;
+  sftp_status_message status;
+  ssh_string datastring;
   int err = SSH_OK;
-  u32 len;
+  uint32_t len;
 
   sftp_enter_function();
 
@@ -1658,7 +1868,7 @@ int sftp_async_read(SFTP_FILE *file, void *data, u32 size, u32 id){
       //handle->offset+=len;
       /* We already have set the offset previously. All we can do is warn that the expected len
        * and effective lengths are different */
-      memcpy(data, datastring->string, len);
+      memcpy(data, string_data(datastring), len);
       string_free(datastring);
       sftp_leave_function();
       return len;
@@ -1673,23 +1883,25 @@ int sftp_async_read(SFTP_FILE *file, void *data, u32 size, u32 id){
   return SSH_ERROR;
 }
 
-ssize_t sftp_write(SFTP_FILE *file, const void *buf, size_t count) {
-  SFTP_SESSION *sftp = file->sftp;
-  SFTP_MESSAGE *msg = NULL;
-  STATUS_MESSAGE *status;
-  STRING *datastring;
-  BUFFER *buffer;
-  u32 id;
+ssize_t sftp_write(sftp_file file, const void *buf, size_t count) {
+  sftp_session sftp = file->sftp;
+  sftp_message msg = NULL;
+  sftp_status_message status;
+  ssh_string datastring;
+  ssh_buffer buffer;
+  uint32_t id;
   int len;
   int packetlen;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   datastring = string_new(count);
   if (datastring == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
@@ -1700,6 +1912,7 @@ ssize_t sftp_write(SFTP_FILE *file, const void *buf, size_t count) {
       buffer_add_ssh_string(buffer, file->handle) < 0 ||
       buffer_add_u64(buffer, htonll(file->offset)) < 0 ||
       buffer_add_ssh_string(buffer, datastring) < 0) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     string_free(datastring);
     return -1;
@@ -1755,7 +1968,7 @@ ssize_t sftp_write(SFTP_FILE *file, const void *buf, size_t count) {
 }
 
 /* Seek to a specific location in a file. */
-int sftp_seek(SFTP_FILE *file, u32 new_offset) {
+int sftp_seek(sftp_file file, uint32_t new_offset) {
   if (file == NULL) {
     return -1;
   }
@@ -1765,7 +1978,7 @@ int sftp_seek(SFTP_FILE *file, u32 new_offset) {
   return 0;
 }
 
-int sftp_seek64(SFTP_FILE *file, u64 new_offset) {
+int sftp_seek64(sftp_file file, uint64_t new_offset) {
   if (file == NULL) {
     return -1;
   }
@@ -1776,47 +1989,48 @@ int sftp_seek64(SFTP_FILE *file, u64 new_offset) {
 }
 
 /* Report current byte position in file. */
-unsigned long sftp_tell(SFTP_FILE *file) {
+unsigned long sftp_tell(sftp_file file) {
   return (unsigned long)file->offset;
 }
 /* Report current byte position in file. */
-u64 sftp_tell64(SFTP_FILE *file) {
-  return (u64)file->offset;
+uint64_t sftp_tell64(sftp_file file) {
+  return (uint64_t) file->offset;
 }
 
 /* Rewinds the position of the file pointer to the beginning of the file.*/
-void sftp_rewind(SFTP_FILE *file) {
+void sftp_rewind(sftp_file file) {
   file->offset = 0;
 }
 
-/* deprecated */
-int sftp_rm(SFTP_SESSION *sftp, const char *file) {
-  return sftp_unlink(sftp, file);
-}
-
 /* code written by Nick */
-int sftp_unlink(SFTP_SESSION *sftp, const char *file) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  STRING *filename;
-  BUFFER *buffer;
-  u32 id;
+int sftp_unlink(sftp_session sftp, const char *file) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string filename;
+  ssh_buffer buffer;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   filename = string_from_char(file);
   if (filename == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, filename) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_REMOVE, buffer) < 0) {
+      buffer_add_ssh_string(buffer, filename) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(filename);
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_REMOVE, buffer) < 0) {
     buffer_free(buffer);
     string_free(filename);
   }
@@ -1864,28 +2078,35 @@ int sftp_unlink(SFTP_SESSION *sftp, const char *file) {
 }
 
 /* code written by Nick */
-int sftp_rmdir(SFTP_SESSION *sftp, const char *directory) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  STRING *filename;
-  BUFFER *buffer;
-  u32 id;
+int sftp_rmdir(sftp_session sftp, const char *directory) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string filename;
+  ssh_buffer buffer;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   filename = string_from_char(directory);
   if (filename == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, filename) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_RMDIR, buffer) < 0) {
+      buffer_add_ssh_string(buffer, filename) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(filename);
+    return -1;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_RMDIR, buffer) < 0) {
     buffer_free(buffer);
     string_free(filename);
     return -1;
@@ -1931,22 +2152,24 @@ int sftp_rmdir(SFTP_SESSION *sftp, const char *directory) {
 }
 
 /* Code written by Nick */
-int sftp_mkdir(SFTP_SESSION *sftp, const char *directory, mode_t mode) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  SFTP_ATTRIBUTES *errno_attr = NULL;
-  SFTP_ATTRIBUTES attr;
-  BUFFER *buffer;
-  STRING *path;
-  u32 id;
+int sftp_mkdir(sftp_session sftp, const char *directory, mode_t mode) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  sftp_attributes errno_attr = NULL;
+  struct sftp_attributes_struct attr;
+  ssh_buffer buffer;
+  ssh_string path;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   path = string_from_char(directory);
   if (path == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
@@ -2020,27 +2243,30 @@ int sftp_mkdir(SFTP_SESSION *sftp, const char *directory, mode_t mode) {
 }
 
 /* code written by nick */
-int sftp_rename(SFTP_SESSION *sftp, const char *original, const char *newname) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  BUFFER *buffer;
-  STRING *oldpath;
-  STRING *newpath;
-  u32 id;
+int sftp_rename(sftp_session sftp, const char *original, const char *newname) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_buffer buffer;
+  ssh_string oldpath;
+  ssh_string newpath;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   oldpath = string_from_char(original);
   if (oldpath == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
 
   newpath = string_from_char(newname);
   if (newpath == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     string_free(oldpath);
     return -1;
@@ -2051,8 +2277,14 @@ int sftp_rename(SFTP_SESSION *sftp, const char *original, const char *newname) {
       buffer_add_ssh_string(buffer, oldpath) < 0 ||
       buffer_add_ssh_string(buffer, newpath) < 0 ||
       /* POSIX rename atomically replaces newpath, we should do the same */
-      buffer_add_u32(buffer, SSH_FXF_RENAME_OVERWRITE) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_RENAME, buffer) < 0) {
+      buffer_add_u32(buffer, SSH_FXF_RENAME_OVERWRITE) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(oldpath);
+    string_free(newpath);
+    return -1;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_RENAME, buffer) < 0) {
     buffer_free(buffer);
     string_free(oldpath);
     string_free(newpath);
@@ -2104,20 +2336,22 @@ int sftp_rename(SFTP_SESSION *sftp, const char *original, const char *newname) {
 
 /* Code written by Nick */
 /* Set file attributes on a file, directory or symbolic link. */
-int sftp_setstat(SFTP_SESSION *sftp, const char *file, SFTP_ATTRIBUTES *attr) {
-  u32 id = sftp_get_new_id(sftp);
-  BUFFER *buffer = buffer_new();
-  STRING *path = string_from_char(file);
-  SFTP_MESSAGE *msg = NULL;
-  STATUS_MESSAGE *status = NULL;
+int sftp_setstat(sftp_session sftp, const char *file, sftp_attributes attr) {
+  uint32_t id = sftp_get_new_id(sftp);
+  ssh_buffer buffer = buffer_new();
+  ssh_string path = string_from_char(file);
+  sftp_message msg = NULL;
+  sftp_status_message status = NULL;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   path = string_from_char(file);
   if (path == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
@@ -2125,8 +2359,13 @@ int sftp_setstat(SFTP_SESSION *sftp, const char *file, SFTP_ATTRIBUTES *attr) {
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
       buffer_add_ssh_string(buffer, path) < 0 ||
-      buffer_add_attributes(buffer, attr) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_SETSTAT, buffer) < 0) {
+      buffer_add_attributes(buffer, attr) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(path);
+    return -1;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_SETSTAT, buffer) < 0) {
     buffer_free(buffer);
     string_free(path);
     return -1;
@@ -2174,9 +2413,8 @@ int sftp_setstat(SFTP_SESSION *sftp, const char *file, SFTP_ATTRIBUTES *attr) {
 }
 
 /* Change the file owner and group */
-int sftp_chown(SFTP_SESSION *sftp, const char *file, uid_t owner, gid_t group) {
-  SFTP_ATTRIBUTES attr;
-
+int sftp_chown(sftp_session sftp, const char *file, uid_t owner, gid_t group) {
+	struct sftp_attributes_struct attr;
   ZERO_STRUCT(attr);
 
   attr.uid = owner;
@@ -2187,9 +2425,8 @@ int sftp_chown(SFTP_SESSION *sftp, const char *file, uid_t owner, gid_t group) {
 }
 
 /* Change permissions of a file */
-int sftp_chmod(SFTP_SESSION *sftp, const char *file, mode_t mode) {
-  SFTP_ATTRIBUTES attr;
-
+int sftp_chmod(sftp_session sftp, const char *file, mode_t mode) {
+	struct sftp_attributes_struct attr;
   ZERO_STRUCT(attr);
   attr.permissions = mode;
   attr.flags = SSH_FILEXFER_ATTR_PERMISSIONS;
@@ -2198,10 +2435,9 @@ int sftp_chmod(SFTP_SESSION *sftp, const char *file, mode_t mode) {
 }
 
 /* Change the last modification and access time of a file. */
-int sftp_utimes(SFTP_SESSION *sftp, const char *file,
+int sftp_utimes(sftp_session sftp, const char *file,
     const struct timeval *times) {
-  SFTP_ATTRIBUTES attr;
-
+	struct sftp_attributes_struct attr;
   ZERO_STRUCT(attr);
 
   attr.atime = times[0].tv_sec;
@@ -2216,31 +2452,37 @@ int sftp_utimes(SFTP_SESSION *sftp, const char *file,
   return sftp_setstat(sftp, file, &attr);
 }
 
-int sftp_symlink(SFTP_SESSION *sftp, const char *target, const char *dest) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  STRING *target_s;
-  STRING *dest_s;
-  BUFFER *buffer;
-  u32 id;
+int sftp_symlink(sftp_session sftp, const char *target, const char *dest) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string target_s;
+  ssh_string dest_s;
+  ssh_buffer buffer;
+  uint32_t id;
 
-  if (sftp == NULL || target == NULL || dest == NULL) {
+  if (sftp == NULL)
+    return -1;
+  if (target == NULL || dest == NULL) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
     return -1;
   }
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return -1;
   }
 
   target_s = string_from_char(target);
   if (target_s == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return -1;
   }
 
   dest_s = string_from_char(dest);
   if (dest_s == NULL) {
+    ssh_set_error_oom(sftp->session);
     string_free(target_s);
     buffer_free(buffer);
     return -1;
@@ -2248,6 +2490,7 @@ int sftp_symlink(SFTP_SESSION *sftp, const char *target, const char *dest) {
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     string_free(dest_s);
     string_free(target_s);
@@ -2257,6 +2500,7 @@ int sftp_symlink(SFTP_SESSION *sftp, const char *target, const char *dest) {
     /* TODO check for version number if they ever fix it. */
     if (buffer_add_ssh_string(buffer, target_s) < 0 ||
       buffer_add_ssh_string(buffer, dest_s) < 0) {
+      ssh_set_error_oom(sftp->session);
       buffer_free(buffer);
       string_free(dest_s);
       string_free(target_s);
@@ -2265,6 +2509,7 @@ int sftp_symlink(SFTP_SESSION *sftp, const char *target, const char *dest) {
   } else {
     if (buffer_add_ssh_string(buffer, dest_s) < 0 ||
       buffer_add_ssh_string(buffer, target_s) < 0) {
+      ssh_set_error_oom(sftp->session);
       buffer_free(buffer);
       string_free(dest_s);
       string_free(target_s);
@@ -2321,35 +2566,48 @@ int sftp_symlink(SFTP_SESSION *sftp, const char *target, const char *dest) {
   return -1;
 }
 
-char *sftp_readlink(SFTP_SESSION *sftp, const char *path) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  STRING *path_s = NULL;
-  STRING *link_s = NULL;
-  BUFFER *buffer;
-  char *link;
-  u32 ignored;
-  u32 id;
+char *sftp_readlink(sftp_session sftp, const char *path) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string path_s = NULL;
+  ssh_string link_s = NULL;
+  ssh_buffer buffer;
+  char *lnk;
+  uint32_t ignored;
+  uint32_t id;
 
-  if (sftp == NULL || path == NULL) {
+  if (sftp == NULL)
+    return NULL;
+  if (path == NULL) {
+    ssh_set_error_invalid(sftp, __FUNCTION__);
     return NULL;
   }
-
+  if (sftp->version < 3){
+    ssh_set_error(sftp,SSH_REQUEST_DENIED,"sftp version %d does not support sftp_readlink",sftp->version);
+    return NULL;
+  }
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
 
   path_s = string_from_char(path);
   if (path_s == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return NULL;
   }
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, path_s) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_READLINK, buffer) < 0) {
+      buffer_add_ssh_string(buffer, path_s) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(path_s);
+    return NULL;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_READLINK, buffer) < 0) {
     buffer_free(buffer);
     string_free(path_s);
     return NULL;
@@ -2371,12 +2629,13 @@ char *sftp_readlink(SFTP_SESSION *sftp, const char *path) {
     link_s = buffer_get_ssh_string(msg->payload);
     sftp_message_free(msg);
     if (link_s == NULL) {
+      /* TODO: what error to set here? */
       return NULL;
     }
-    link = string_to_char(link_s);
+    lnk = string_to_char(link_s);
     string_free(link_s);
 
-    return link;
+    return lnk;
   } else if (msg->packet_type == SSH_FXP_STATUS) { /* bad response (error) */
     status = parse_status_msg(msg);
     sftp_message_free(msg);
@@ -2395,32 +2654,315 @@ char *sftp_readlink(SFTP_SESSION *sftp, const char *path) {
   return NULL;
 }
 
-/* another code written by Nick */
-char *sftp_canonicalize_path(SFTP_SESSION *sftp, const char *path) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  STRING *name = NULL;
-  STRING *pathstr;
-  BUFFER *buffer;
-  char *cname;
-  u32 ignored;
-  u32 id;
+static sftp_statvfs_t sftp_parse_statvfs(sftp_session sftp, ssh_buffer buf) {
+	sftp_statvfs_t  statvfs;
+  uint64_t tmp;
+  int ok = 0;
 
+  statvfs = malloc(sizeof(struct sftp_statvfs_struct));
+  if (statvfs == NULL) {
+    ssh_set_error_oom(sftp->session);
+    return NULL;
+  }
+  ZERO_STRUCTP(statvfs);
+
+  /* try .. catch */
+  do {
+    /* file system block size */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_bsize = ntohll(tmp);
+
+    /* fundamental fs block size */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_frsize = ntohll(tmp);
+
+    /* number of blocks (unit f_frsize) */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_blocks = ntohll(tmp);
+
+    /* free blocks in file system */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_bfree = ntohll(tmp);
+
+    /* free blocks for non-root */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_bavail = ntohll(tmp);
+
+    /* total file inodes */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_files = ntohll(tmp);
+
+    /* free file inodes */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_ffree = ntohll(tmp);
+
+    /* free file inodes for to non-root */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_favail = ntohll(tmp);
+
+    /* file system id */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_fsid = ntohll(tmp);
+
+    /* bit mask of f_flag values */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_flag = ntohll(tmp);
+
+    /* maximum filename length */
+    if (buffer_get_u64(buf, &tmp) != sizeof(uint64_t)) {
+      break;
+    }
+    statvfs->f_namemax = ntohll(tmp);
+
+    ok = 1;
+  } while(0);
+
+  if (!ok) {
+    SAFE_FREE(statvfs);
+    ssh_set_error(sftp->session, SSH_FATAL, "Invalid statvfs structure");
+    return NULL;
+  }
+
+  return statvfs;
+}
+
+sftp_statvfs_t sftp_statvfs(sftp_session sftp, const char *path) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string pathstr;
+  ssh_string ext;
+  ssh_buffer buffer;
+  uint32_t id;
+
+  if (sftp == NULL)
+    return NULL;
+  if (path == NULL) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
+    return NULL;
+  }
+  if (sftp->version < 3){
+    ssh_set_error(sftp,SSH_REQUEST_DENIED,"sftp version %d does not support sftp_statvfs",sftp->version);
+    return NULL;
+  }
+ 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
+    return NULL;
+  }
+
+  ext = string_from_char("statvfs@openssh.com");
+  if (ext == NULL) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
     return NULL;
   }
 
   pathstr = string_from_char(path);
   if (pathstr == NULL) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(ext);
+    return NULL;
+  }
+
+  id = sftp_get_new_id(sftp);
+  if (buffer_add_u32(buffer, id) < 0 ||
+      buffer_add_ssh_string(buffer, ext) < 0 ||
+      buffer_add_ssh_string(buffer, pathstr) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(ext);
+    string_free(pathstr);
+    return NULL;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_EXTENDED, buffer) < 0) {
+    buffer_free(buffer);
+    string_free(ext);
+    string_free(pathstr);
+    return NULL;
+  }
+  buffer_free(buffer);
+  string_free(ext);
+  string_free(pathstr);
+
+  while (msg == NULL) {
+    if (sftp_read_and_dispatch(sftp) < 0) {
+      return NULL;
+    }
+    msg = sftp_dequeue(sftp, id);
+  }
+
+  if (msg->packet_type == SSH_FXP_EXTENDED_REPLY) {
+  	sftp_statvfs_t  buf = sftp_parse_statvfs(sftp, msg->payload);
+    sftp_message_free(msg);
+    if (buf == NULL) {
+      return NULL;
+    }
+
+    return buf;
+  } else if (msg->packet_type == SSH_FXP_STATUS) { /* bad response (error) */
+    status = parse_status_msg(msg);
+    sftp_message_free(msg);
+    if (status == NULL) {
+      return NULL;
+    }
+    ssh_set_error(sftp->session, SSH_REQUEST_DENIED,
+        "SFTP server: %s", status->errormsg);
+    status_msg_free(status);
+  } else { /* this shouldn't happen */
+    ssh_set_error(sftp->session, SSH_FATAL,
+        "Received message %d when attempting to get statvfs", msg->packet_type);
+    sftp_message_free(msg);
+  }
+
+  return NULL;
+}
+
+sftp_statvfs_t sftp_fstatvfs(sftp_file file) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  sftp_session sftp;
+  ssh_string ext;
+  ssh_buffer buffer;
+  uint32_t id;
+
+  if (file == NULL) {
+    return NULL;
+  }
+  sftp = file->sftp;
+
+  buffer = buffer_new();
+  if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
+    return NULL;
+  }
+
+  ext = string_from_char("fstatvfs@openssh.com");
+  if (ext == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return NULL;
   }
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, pathstr) < 0 ||
-      sftp_packet_write(sftp, SSH_FXP_REALPATH, buffer) < 0) {
+      buffer_add_ssh_string(buffer, ext) < 0 ||
+      buffer_add_ssh_string(buffer, file->handle) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(ext);
+    return NULL;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_EXTENDED, buffer) < 0) {
+    buffer_free(buffer);
+    string_free(ext);
+    return NULL;
+  }
+  buffer_free(buffer);
+  string_free(ext);
+
+  while (msg == NULL) {
+    if (sftp_read_and_dispatch(sftp) < 0) {
+      return NULL;
+    }
+    msg = sftp_dequeue(sftp, id);
+  }
+
+  if (msg->packet_type == SSH_FXP_EXTENDED_REPLY) {
+  	sftp_statvfs_t buf = sftp_parse_statvfs(sftp, msg->payload);
+    sftp_message_free(msg);
+    if (buf == NULL) {
+      return NULL;
+    }
+
+    return buf;
+  } else if (msg->packet_type == SSH_FXP_STATUS) { /* bad response (error) */
+    status = parse_status_msg(msg);
+    sftp_message_free(msg);
+    if (status == NULL) {
+      return NULL;
+    }
+    ssh_set_error(sftp->session, SSH_REQUEST_DENIED,
+        "SFTP server: %s", status->errormsg);
+    status_msg_free(status);
+  } else { /* this shouldn't happen */
+    ssh_set_error(sftp->session, SSH_FATAL,
+        "Received message %d when attempting to set stats", msg->packet_type);
+    sftp_message_free(msg);
+  }
+
+  return NULL;
+}
+
+void sftp_statvfs_free(sftp_statvfs_t statvfs) {
+  if (statvfs == NULL) {
+    return;
+  }
+
+  SAFE_FREE(statvfs);
+}
+
+/* another code written by Nick */
+char *sftp_canonicalize_path(sftp_session sftp, const char *path) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string name = NULL;
+  ssh_string pathstr;
+  ssh_buffer buffer;
+  char *cname;
+  uint32_t ignored;
+  uint32_t id;
+
+  if (sftp == NULL)
+    return NULL;
+  if (path == NULL) {
+    ssh_set_error_invalid(sftp->session, __FUNCTION__);
+    return NULL;
+  }
+
+  buffer = buffer_new();
+  if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
+    return NULL;
+  }
+
+  pathstr = string_from_char(path);
+  if (pathstr == NULL) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    return NULL;
+  }
+
+  id = sftp_get_new_id(sftp);
+  if (buffer_add_u32(buffer, id) < 0 ||
+      buffer_add_ssh_string(buffer, pathstr) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(pathstr);
+    return NULL;
+  }
+  if (sftp_packet_write(sftp, SSH_FXP_REALPATH, buffer) < 0) {
     buffer_free(buffer);
     string_free(pathstr);
     return NULL;
@@ -2442,11 +2984,14 @@ char *sftp_canonicalize_path(SFTP_SESSION *sftp, const char *path) {
     name = buffer_get_ssh_string(msg->payload);
     sftp_message_free(msg);
     if (name == NULL) {
+      /* TODO: error message? */
       return NULL;
     }
     cname = string_to_char(name);
     string_free(name);
-
+    if (cname == NULL) {
+      ssh_set_error_oom(sftp->session);
+    }
     return cname;
   } else if (msg->packet_type == SSH_FXP_STATUS) { /* bad response (error) */
     status = parse_status_msg(msg);
@@ -2466,29 +3011,36 @@ char *sftp_canonicalize_path(SFTP_SESSION *sftp, const char *path) {
   return NULL;
 }
 
-static SFTP_ATTRIBUTES *sftp_xstat(SFTP_SESSION *sftp, const char *path,
+static sftp_attributes sftp_xstat(sftp_session sftp, const char *path,
     int param) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  STRING *pathstr;
-  BUFFER *buffer;
-  u32 id;
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_string pathstr;
+  ssh_buffer buffer;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(sftp->session);
     return NULL;
   }
 
   pathstr = string_from_char(path);
   if (pathstr == NULL) {
+    ssh_set_error_oom(sftp->session);
     buffer_free(buffer);
     return NULL;
   }
 
   id = sftp_get_new_id(sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, pathstr) < 0 ||
-      sftp_packet_write(sftp, param, buffer) < 0) {
+      buffer_add_ssh_string(buffer, pathstr) < 0) {
+    ssh_set_error_oom(sftp->session);
+    buffer_free(buffer);
+    string_free(pathstr);
+    return NULL;
+  }
+  if (sftp_packet_write(sftp, param, buffer) < 0) {
     buffer_free(buffer);
     string_free(pathstr);
     return NULL;
@@ -2524,29 +3076,34 @@ static SFTP_ATTRIBUTES *sftp_xstat(SFTP_SESSION *sftp, const char *path,
   return NULL;
 }
 
-SFTP_ATTRIBUTES *sftp_stat(SFTP_SESSION *session, const char *path) {
+sftp_attributes sftp_stat(sftp_session session, const char *path) {
   return sftp_xstat(session, path, SSH_FXP_STAT);
 }
 
-SFTP_ATTRIBUTES *sftp_lstat(SFTP_SESSION *session, const char *path) {
+sftp_attributes sftp_lstat(sftp_session session, const char *path) {
   return sftp_xstat(session, path, SSH_FXP_LSTAT);
 }
 
-SFTP_ATTRIBUTES *sftp_fstat(SFTP_FILE *file) {
-  STATUS_MESSAGE *status = NULL;
-  SFTP_MESSAGE *msg = NULL;
-  BUFFER *buffer;
-  u32 id;
+sftp_attributes sftp_fstat(sftp_file file) {
+  sftp_status_message status = NULL;
+  sftp_message msg = NULL;
+  ssh_buffer buffer;
+  uint32_t id;
 
   buffer = buffer_new();
   if (buffer == NULL) {
+    ssh_set_error_oom(file->sftp->session);
     return NULL;
   }
 
   id = sftp_get_new_id(file->sftp);
   if (buffer_add_u32(buffer, id) < 0 ||
-      buffer_add_ssh_string(buffer, file->handle) < 0 ||
-      sftp_packet_write(file->sftp, SSH_FXP_FSTAT, buffer) < 0) {
+      buffer_add_ssh_string(buffer, file->handle) < 0) {
+    ssh_set_error_oom(file->sftp->session);
+    buffer_free(buffer);
+    return NULL;
+  }
+  if (sftp_packet_write(file->sftp, SSH_FXP_FSTAT, buffer) < 0) {
     buffer_free(buffer);
     return NULL;
   }

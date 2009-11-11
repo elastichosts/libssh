@@ -21,6 +21,8 @@
  * MA 02111-1307, USA.
  */
 
+#include "config.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -29,10 +31,15 @@
 #include <arpa/inet.h>
 #endif
 
-#include "config.h"
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
 #include "libssh/ssh1.h"
+#include "libssh/buffer.h"
+#include "libssh/packet.h"
+#include "libssh/session.h"
+#include "libssh/wrapper.h"
+#include "libssh/keys.h"
+#include "libssh/dh.h"
 
 #ifdef HAVE_LIBGCRYPT
 #define BLOWFISH "blowfish-cbc,"
@@ -232,8 +239,8 @@ char *ssh_find_matching(const char *in_d, const char *what_d){
     return NULL;
 }
 
-int ssh_get_kex(SSH_SESSION *session, int server_kex) {
-  STRING *str = NULL;
+int ssh_get_kex(ssh_session session, int server_kex) {
+  ssh_string str = NULL;
   char *strings[10];
   int i;
 
@@ -311,7 +318,7 @@ error:
   return -1;
 }
 
-void ssh_list_kex(struct ssh_session *session, KEX *kex) {
+void ssh_list_kex(ssh_session session, KEX *kex) {
   int i = 0;
 
 #ifdef DEBUG_CRYPTO
@@ -328,18 +335,13 @@ void ssh_list_kex(struct ssh_session *session, KEX *kex) {
 /* it must be aware of the server kex message */
 /* it can fail if option is null, not any user specified kex method matches the server one, if not any default kex matches */
 
-int set_kex(SSH_SESSION *session){
+int set_kex(ssh_session session){
     KEX *server = &session->server_kex;
     KEX *client=&session->client_kex;
-    SSH_OPTIONS *options=session->options;
     int i;
     const char *wanted;
     enter_function();
-    /* the client might ask for a specific cookie to be sent. useful for server debugging */
-    if(options->wanted_cookie)
-        memcpy(client->cookie,options->wanted_cookie,16);
-    else
-        ssh_get_random(client->cookie,16,0);
+    ssh_get_random(client->cookie,16,0);
     client->methods=malloc(10 * sizeof(char **));
     if (client->methods == NULL) {
       ssh_set_error(session, SSH_FATAL, "No space left");
@@ -348,7 +350,7 @@ int set_kex(SSH_SESSION *session){
     }
     memset(client->methods,0,10*sizeof(char **));
     for (i=0;i<10;i++){
-        if(!(wanted=options->wanted_methods[i]))
+        if(!(wanted=session->wanted_methods[i]))
             wanted=default_methods[i];
         client->methods[i]=ssh_find_matching(server->methods[i],wanted);
         if(!client->methods[i] && i < SSH_LANG_C_S){
@@ -371,9 +373,9 @@ int set_kex(SSH_SESSION *session){
 }
 
 /* this function only sends the predefined set of kex methods */
-int ssh_send_kex(SSH_SESSION *session, int server_kex) {
+int ssh_send_kex(ssh_session session, int server_kex) {
   KEX *kex = (server_kex ? &session->server_kex : &session->client_kex);
-  STRING *str = NULL;
+  ssh_string str = NULL;
   int i;
 
   enter_function();
@@ -444,10 +446,10 @@ int verify_existing_algo(int algo, const char *name){
 
 /* makes a STRING contating 3 strings : ssh-rsa1,e and n */
 /* this is a public key in openssh's format */
-static STRING *make_rsa1_string(STRING *e, STRING *n){
-  BUFFER *buffer = NULL;
-  STRING *rsa = NULL;
-  STRING *ret = NULL;
+static ssh_string make_rsa1_string(ssh_string e, ssh_string n){
+  ssh_buffer buffer = NULL;
+  ssh_string rsa = NULL;
+  ssh_string ret = NULL;
 
   buffer = buffer_new();
   rsa = string_from_char("ssh-rsa1");
@@ -475,8 +477,8 @@ error:
   return ret;
 }
 
-static int build_session_id1(SSH_SESSION *session, STRING *servern,
-    STRING *hostn) {
+static int build_session_id1(ssh_session session, ssh_string servern,
+    ssh_string hostn) {
   MD5CTX md5 = NULL;
 
   md5 = md5_init();
@@ -488,8 +490,8 @@ static int build_session_id1(SSH_SESSION *session, STRING *servern,
   ssh_print_hexa("host modulus",hostn->string,string_len(hostn));
   ssh_print_hexa("server modulus",servern->string,string_len(servern));
 #endif
-  md5_update(md5,hostn->string,string_len(hostn));
-  md5_update(md5,servern->string,string_len(servern));
+  md5_update(md5,string_data(hostn),string_len(hostn));
+  md5_update(md5,string_data(servern),string_len(servern));
   md5_update(md5,session->server_kex.cookie,8);
   md5_final(session->next_crypto->session_id,md5);
 #ifdef DEBUG_CRYPTO
@@ -500,7 +502,7 @@ static int build_session_id1(SSH_SESSION *session, STRING *servern,
 }
 
 /* returns 1 if the modulus of k1 is < than the one of k2 */
-static int modulus_smaller(PUBLIC_KEY *k1, PUBLIC_KEY *k2){
+static int modulus_smaller(ssh_public_key k1, ssh_public_key k2){
     bignum n1;
     bignum n2;
     int res;
@@ -529,12 +531,12 @@ static int modulus_smaller(PUBLIC_KEY *k1, PUBLIC_KEY *k2){
 }
 
 #define ABS(A) ( (A)<0 ? -(A):(A) )
-static STRING *encrypt_session_key(SSH_SESSION *session, PUBLIC_KEY *srvkey,
-    PUBLIC_KEY *hostkey, int slen, int hlen) {
+static ssh_string encrypt_session_key(ssh_session session, ssh_public_key srvkey,
+    ssh_public_key hostkey, int slen, int hlen) {
   unsigned char buffer[32] = {0};
   int i;
-  STRING *data1 = NULL;
-  STRING *data2 = NULL;
+  ssh_string data1 = NULL;
+  ssh_string data2 = NULL;
 
   /* first, generate a session key */
   ssh_get_random(session->next_crypto->encryptkey, 32, 1);
@@ -606,22 +608,22 @@ static STRING *encrypt_session_key(SSH_SESSION *session, PUBLIC_KEY *srvkey,
  *    32-bit int   supported_authentications_mask
  */
 
-int ssh_get_kex1(SSH_SESSION *session) {
-  STRING *server_exp = NULL;
-  STRING *server_mod = NULL;
-  STRING *host_exp = NULL;
-  STRING *host_mod = NULL;
-  STRING *serverkey = NULL;
-  STRING *hostkey = NULL;
-  STRING *enc_session = NULL;
-  PUBLIC_KEY *srv = NULL;
-  PUBLIC_KEY *host = NULL;
-  u32 server_bits;
-  u32 host_bits;
-  u32 protocol_flags;
-  u32 supported_ciphers_mask;
-  u32 supported_authentications_mask;
-  u16 bits;
+int ssh_get_kex1(ssh_session session) {
+  ssh_string server_exp = NULL;
+  ssh_string server_mod = NULL;
+  ssh_string host_exp = NULL;
+  ssh_string host_mod = NULL;
+  ssh_string serverkey = NULL;
+  ssh_string hostkey = NULL;
+  ssh_string enc_session = NULL;
+  ssh_public_key srv = NULL;
+  ssh_public_key host = NULL;
+  uint32_t server_bits;
+  uint32_t host_bits;
+  uint32_t protocol_flags;
+  uint32_t supported_ciphers_mask;
+  uint32_t supported_authentications_mask;
+  uint16_t bits;
   int rc = -1;
   int ko;
 
@@ -661,7 +663,7 @@ int ssh_get_kex1(SSH_SESSION *session) {
   buffer_get_u32(session->in_buffer, &supported_ciphers_mask);
   ko = buffer_get_u32(session->in_buffer, &supported_authentications_mask);
 
-  if ((ko != sizeof(u32)) || !host_mod || !host_exp
+  if ((ko != sizeof(uint32_t)) || !host_mod || !host_exp
       || !server_mod || !server_exp) {
     ssh_log(session, SSH_LOG_RARE, "Invalid SSH_SMSG_PUBLIC_KEY packet");
     ssh_set_error(session, SSH_FATAL, "Invalid SSH_SMSG_PUBLIC_KEY packet");
@@ -738,10 +740,10 @@ int ssh_get_kex1(SSH_SESSION *session) {
       bits, string_len(enc_session));
   bits = htons(bits);
   /* the encrypted mpint */
-  if (buffer_add_data(session->out_buffer, &bits, sizeof(u16)) < 0) {
+  if (buffer_add_data(session->out_buffer, &bits, sizeof(uint16_t)) < 0) {
     goto error;
   }
-  if (buffer_add_data(session->out_buffer, enc_session->string,
+  if (buffer_add_data(session->out_buffer, string_data(enc_session),
         string_len(enc_session)) < 0) {
     goto error;
   }

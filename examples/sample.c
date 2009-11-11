@@ -1,11 +1,11 @@
 /* client.c */
 /*
-Copyright 2003 Aris Adamantiadis
+Copyright 2003-2009 Aris Adamantiadis
 
 This file is part of the SSH Library
 
 You are free to copy this file, modify it in any way, consider it being public
-domain. This does not apply to the rest of the library though, but it is 
+domain. This does not apply to the rest of the library though, but it is
 allowed to cut-and-paste working code from this file to any license of
 program.
 The goal is to show the API in action. It's not a reference on how terminal
@@ -21,12 +21,14 @@ clients must be made or how a client should react.
 
 #include <sys/select.h>
 #include <sys/time.h>
+#include <sys/statvfs.h>
 #ifdef HAVE_PTY_H
 #include <pty.h>
 #endif
 #include <sys/ioctl.h>
 #include <signal.h>
 #include <errno.h>
+#include <libssh/callbacks.h>
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
 
@@ -35,10 +37,42 @@ clients must be made or how a client should react.
 #define MAXCMD 10
 char *host;
 char *user;
-int sftp;
+int is_sftp;
 char *cmds[MAXCMD];
 struct termios terminal;
-void do_sftp(SSH_SESSION *session);
+
+void do_sftp(ssh_session session);
+
+static int auth_callback(const char *prompt, char *buf, size_t len,
+    int echo, int verify, void *userdata) {
+  char *answer = NULL;
+  char *ptr;
+
+  (void) verify;
+  (void) userdata;
+
+  if (echo) {
+    while ((answer = fgets(buf, len, stdin)) == NULL);
+    if ((ptr = strchr(buf, '\n'))) {
+      ptr = '\0';
+    }
+  } else {
+    answer = getpass(prompt);
+  }
+
+  if (answer == NULL) {
+    return -1;
+  }
+
+  strncpy(buf, answer, len);
+
+  return 0;
+}
+
+struct ssh_callbacks_struct cb = {
+		.auth_function=auth_callback,
+		.userdata=NULL
+};
 
 static void add_cmd(char *cmd){
     int n;
@@ -63,7 +97,7 @@ static void usage(){
 static int opts(int argc, char **argv){
     int i;
     if(strstr(argv[0],"sftp"))
-        sftp=1;
+        is_sftp=1;
 //    for(i=0;i<argc;i++)
 //        printf("%d : %s\n",i,argv[i]);
     /* insert your own arguments here */
@@ -109,7 +143,7 @@ static void do_exit(int i) {
   exit(0);
 }
 
-CHANNEL *chan;
+ssh_channel chan;
 int signal_delayed=0;
 
 static void sigwindowchanged(int i){
@@ -129,19 +163,19 @@ static void sizechanged(void){
 //    printf("Changed pty size\n");
     setsignal();
 }
-static void select_loop(SSH_SESSION *session,CHANNEL *channel){
+static void select_loop(ssh_session session,ssh_channel channel){
     fd_set fds;
     struct timeval timeout;
     char buffer[10];
-    BUFFER *readbuf=buffer_new();
-    CHANNEL *channels[2];
+    ssh_buffer readbuf=buffer_new();
+    ssh_channel channels[2];
     int lus;
     int eof=0;
     int maxfd;
     int ret;
     while(channel){
        /* when a signal is caught, ssh_select will return
-         * with SSH_EINTR, which means it should be started 
+         * with SSH_EINTR, which means it should be started
          * again. It lets you handle the signal the faster you
          * can, like in this window changed example. Of course, if
          * your signal handler doesn't call libssh at all, you're
@@ -178,7 +212,7 @@ static void select_loop(SSH_SESSION *session,CHANNEL *channel){
         } while (ret==EINTR || ret==SSH_EINTR);
 
         // we already looked for input from stdin. Now, we are looking for input from the channel
-        
+
         if(channel && channel_is_closed(channel)){
             ssh_log(session,SSH_LOG_RARE,"exit-status : %d\n",channel_get_exit_status(channel));
 
@@ -228,8 +262,8 @@ static void select_loop(SSH_SESSION *session,CHANNEL *channel){
 }
 
 
-static void shell(SSH_SESSION *session){
-    CHANNEL *channel;
+static void shell(ssh_session session){
+    ssh_channel channel;
     struct termios terminal_local;
     int interactive=isatty(0);
     channel = channel_new(session);
@@ -259,8 +293,8 @@ static void shell(SSH_SESSION *session){
     select_loop(session,channel);
 }
 
-static void batch_shell(SSH_SESSION *session){
-    CHANNEL *channel;
+static void batch_shell(ssh_session session){
+    ssh_channel channel;
     char buffer[1024];
     int i,s=0;
     for(i=0;i<MAXCMD && cmds[i];++i)
@@ -276,34 +310,128 @@ static void batch_shell(SSH_SESSION *session){
 
 #ifdef WITH_SFTP
 /* it's just a proof of concept code for sftp, till i write a real documentation about it */
-void do_sftp(SSH_SESSION *session){
-    SFTP_SESSION *sftp_session=sftp_new(session);
-    SFTP_DIR *dir;
-    SFTP_ATTRIBUTES *file;
-    SFTP_FILE *fichier;
-    SFTP_FILE *to;
+void do_sftp(ssh_session session){
+    sftp_session sftp=sftp_new(session);
+    sftp_dir dir;
+    sftp_attributes file;
+    sftp_statvfs_t sftpstatvfs;
+    struct statvfs sysstatvfs;
+    sftp_file fichier;
+    sftp_file to;
     int len=1;
-    int i;
-    char data[8000];
-    if(!sftp_session){
+    unsigned int i;
+    char data[8000]={0};
+    char *lnk;
+
+    unsigned int count;
+
+    if(!sftp){
         fprintf(stderr, "sftp error initialising channel: %s\n",
             ssh_get_error(session));
         return;
     }
-    if(sftp_init(sftp_session)){
+    if(sftp_init(sftp)){
         fprintf(stderr, "error initialising sftp: %s\n",
             ssh_get_error(session));
         return;
     }
+
+    printf("Additional SFTP extensions provided by the server:\n");
+    count = sftp_extensions_get_count(sftp);
+    for (i = 0; i < count; i++) {
+      printf("\t%s, version: %s\n",
+          sftp_extensions_get_name(sftp, i),
+          sftp_extensions_get_data(sftp, i));
+    }
+
+    /* test symlink and readlink */
+    if (sftp_symlink(sftp, "/tmp/this_is_the_link",
+          "/tmp/sftp_symlink_test") < 0) {
+      fprintf(stderr, "Could not create link (%s)\n", ssh_get_error(session));
+      return;
+    }
+
+    lnk = sftp_readlink(sftp, "/tmp/sftp_symlink_test");
+    if (lnk == NULL) {
+      fprintf(stderr, "Could not read link (%s)\n", ssh_get_error(session));
+      return;
+    }
+    printf("readlink /tmp/sftp_symlink_test: %s\n", lnk);
+
+    sftp_unlink(sftp, "/tmp/sftp_symlink_test");
+
+    if (sftp_extension_supported(sftp, "statvfs@openssh.com", "2")) {
+      sftpstatvfs = sftp_statvfs(sftp, "/tmp");
+      if (sftpstatvfs == NULL) {
+        fprintf(stderr, "statvfs failed (%s)\n", ssh_get_error(session));
+        return;
+      }
+
+      printf("sftp statvfs:\n"
+          "\tfile system block size: %llu\n"
+          "\tfundamental fs block size: %llu\n"
+          "\tnumber of blocks (unit f_frsize): %llu\n"
+          "\tfree blocks in file system: %llu\n"
+          "\tfree blocks for non-root: %llu\n"
+          "\ttotal file inodes: %llu\n"
+          "\tfree file inodes: %llu\n"
+          "\tfree file inodes for to non-root: %llu\n"
+          "\tfile system id: %llu\n"
+          "\tbit mask of f_flag values: %llu\n"
+          "\tmaximum filename length: %llu\n",
+          (unsigned long long) sftpstatvfs->f_bsize,
+          (unsigned long long) sftpstatvfs->f_frsize,
+          (unsigned long long) sftpstatvfs->f_blocks,
+          (unsigned long long) sftpstatvfs->f_bfree,
+          (unsigned long long) sftpstatvfs->f_bavail,
+          (unsigned long long) sftpstatvfs->f_files,
+          (unsigned long long) sftpstatvfs->f_ffree,
+          (unsigned long long) sftpstatvfs->f_favail,
+          (unsigned long long) sftpstatvfs->f_fsid,
+          (unsigned long long) sftpstatvfs->f_flag,
+          (unsigned long long) sftpstatvfs->f_namemax);
+
+      sftp_statvfs_free(sftpstatvfs);
+
+      if (statvfs("/tmp", &sysstatvfs) < 0) {
+        fprintf(stderr, "statvfs failed (%s)\n", strerror(errno));
+        return;
+      }
+
+      printf("sys statvfs:\n"
+          "\tfile system block size: %llu\n"
+          "\tfundamental fs block size: %llu\n"
+          "\tnumber of blocks (unit f_frsize): %llu\n"
+          "\tfree blocks in file system: %llu\n"
+          "\tfree blocks for non-root: %llu\n"
+          "\ttotal file inodes: %llu\n"
+          "\tfree file inodes: %llu\n"
+          "\tfree file inodes for to non-root: %llu\n"
+          "\tfile system id: %llu\n"
+          "\tbit mask of f_flag values: %llu\n"
+          "\tmaximum filename length: %llu\n",
+          (unsigned long long) sysstatvfs.f_bsize,
+          (unsigned long long) sysstatvfs.f_frsize,
+          (unsigned long long) sysstatvfs.f_blocks,
+          (unsigned long long) sysstatvfs.f_bfree,
+          (unsigned long long) sysstatvfs.f_bavail,
+          (unsigned long long) sysstatvfs.f_files,
+          (unsigned long long) sysstatvfs.f_ffree,
+          (unsigned long long) sysstatvfs.f_favail,
+          (unsigned long long) sysstatvfs.f_fsid,
+          (unsigned long long) sysstatvfs.f_flag,
+          (unsigned long long) sysstatvfs.f_namemax);
+    }
+
     /* the connection is made */
     /* opening a directory */
-    dir=sftp_opendir(sftp_session,"./");
+    dir=sftp_opendir(sftp,"./");
     if(!dir) {
         fprintf(stderr, "Directory not opened(%s)\n", ssh_get_error(session));
         return ;
     }
     /* reading the whole directory, file by file */
-    while((file=sftp_readdir(sftp_session,dir))){
+    while((file=sftp_readdir(sftp,dir))){
         fprintf(stderr, "%30s(%.8o) : %.5d.%.5d : %.10llu bytes\n",
             file->name,
             file->permissions,
@@ -324,14 +452,14 @@ void do_sftp(SSH_SESSION *session){
     /* this will open a file and copy it into your /home directory */
     /* the small buffer size was intended to stress the library. of course, you can use a buffer till 20kbytes without problem */
 
-    fichier=sftp_open(sftp_session,"/usr/bin/ssh",O_RDONLY, 0);
+    fichier=sftp_open(sftp,"/usr/bin/ssh",O_RDONLY, 0);
     if(!fichier){
         fprintf(stderr, "Error opening /usr/bin/ssh: %s\n",
             ssh_get_error(session));
         return;
     }
     /* open a file for writing... */
-    to=sftp_open(sftp_session,"ssh-copy",O_WRONLY | O_CREAT, 0);
+    to=sftp_open(sftp,"ssh-copy",O_WRONLY | O_CREAT, 0700);
     if(!to){
         fprintf(stderr, "Error opening ssh-copy for writing: %s\n",
             ssh_get_error(session));
@@ -350,7 +478,7 @@ void do_sftp(SSH_SESSION *session){
     sftp_close(fichier);
     sftp_close(to);
     printf("fichiers ferm\n");
-    to=sftp_open(sftp_session,"/tmp/grosfichier",O_WRONLY|O_CREAT, 0644);
+    to=sftp_open(sftp,"/tmp/grosfichier",O_WRONLY|O_CREAT, 0644);
     for(i=0;i<1000;++i){
         len=sftp_write(to,data,8000);
         printf("wrote %d bytes\n",len);
@@ -359,13 +487,14 @@ void do_sftp(SSH_SESSION *session){
         }
     }
     sftp_close(to);
+
     /* close the sftp session */
-    sftp_free(sftp_session);
-    printf("session sftp termin�\n");
+    sftp_free(sftp);
+    printf("sftp session terminated\n");
 }
 #endif
 
-static int auth_kbdint(SSH_SESSION *session){
+static int auth_kbdint(ssh_session session){
     int err=ssh_userauth_kbdint(session,NULL,NULL);
     const char *name, *instruction, *prompt;
     char *ptr;
@@ -405,8 +534,7 @@ static int auth_kbdint(SSH_SESSION *session){
 }
 
 int main(int argc, char **argv){
-    SSH_SESSION *session;
-    SSH_OPTIONS *options;
+    ssh_session session;
     int auth=0;
     char *password;
     char *banner;
@@ -415,28 +543,33 @@ int main(int argc, char **argv){
     char buf[10];
     unsigned char *hash = NULL;
     int hlen;
+    session = ssh_new();
 
-    options=ssh_options_new();
-    if(ssh_options_getopt(options,&argc, argv)){
-    	fprintf(stderr,"error parsing command line :%s\n",ssh_get_error(options));
-    	usage();	
+    ssh_callbacks_init(&cb);
+    ssh_set_callbacks(session,&cb);
+
+    if(ssh_options_getopt(session, &argc, argv)) {
+      fprintf(stderr, "error parsing command line :%s\n",
+          ssh_get_error(session));
+      usage();
     }
     opts(argc,argv);
     signal(SIGTERM, do_exit);
 
     if (user) {
-      if (ssh_options_set_username(options,user) < 0) {
-        ssh_options_free(options);
+      if (ssh_options_set(session, SSH_OPTIONS_USER, user) < 0) {
+        ssh_disconnect(session);
         return 1;
       }
     }
 
-    if (ssh_options_set_host(options,host) < 0) {
-      ssh_options_free(options);
+    if (ssh_options_set(session, SSH_OPTIONS_HOST ,host) < 0) {
+      ssh_disconnect(session);
       return 1;
     }
-    session=ssh_new();
-    ssh_set_options(session,options);
+
+    ssh_options_parse_config(session, NULL);
+
     if(ssh_connect(session)){
         fprintf(stderr,"Connection failed : %s\n",ssh_get_error(session));
         ssh_disconnect(session);
@@ -473,7 +606,7 @@ int main(int argc, char **argv){
         case SSH_SERVER_FILE_NOT_FOUND:
             fprintf(stderr,"Could not find known host file. If you accept the host key here,\n");
             fprintf(stderr,"the file will be automatically created.\n");
-            /* fallback to SSH_SERVER_NOT_KNOWN behaviour */
+            /* fallback to SSH_SERVER_NOT_KNOWN behavior */
         case SSH_SERVER_NOT_KNOWN:
             hexa = ssh_get_hexa(hash, hlen);
             fprintf(stderr,"The server is unknown. Do you trust the host key ?\n");
@@ -493,7 +626,7 @@ int main(int argc, char **argv){
                   exit(-1);
                 }
             }
-            
+
             break;
         case SSH_SERVER_ERROR:
             free(hash);
@@ -507,7 +640,6 @@ int main(int argc, char **argv){
     ssh_userauth_none(session, NULL);
 
     auth = ssh_auth_list(session);
-    printf("auth: 0x%04x\n", auth);
     printf("supported auth methods: ");
     if (auth & SSH_AUTH_METHOD_PUBLICKEY) {
       printf("publickey");
@@ -550,10 +682,10 @@ int main(int argc, char **argv){
     }
     ssh_log(session, SSH_LOG_FUNCTIONS, "Authentication success");
     if(strstr(argv[0],"sftp")){
-        sftp=1;
+        is_sftp=1;
         ssh_log(session, SSH_LOG_FUNCTIONS, "Doing sftp instead");
     }
-    if(!sftp){
+    if(!is_sftp){
         if(!cmds[0])
             shell(session);
         else
@@ -563,9 +695,10 @@ int main(int argc, char **argv){
     else
         do_sftp(session);
 #endif
-    if(!sftp && !cmds[0])
+    if(!is_sftp && !cmds[0])
         do_cleanup(0);
     ssh_disconnect(session);
+    ssh_free(session);
     ssh_finalize();
 
     return 0;

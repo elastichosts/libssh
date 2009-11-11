@@ -32,6 +32,12 @@
 
 #include "libssh/priv.h"
 #include "libssh/ssh2.h"
+#include "libssh/buffer.h"
+#include "libssh/agent.h"
+#include "libssh/keyfiles.h"
+#include "libssh/packet.h"
+#include "libssh/session.h"
+#include "libssh/keys.h"
 
 /** \defgroup ssh_auth SSH Authentication functions
  * \brief functions to authenticate to servers
@@ -39,7 +45,7 @@
 /** \addtogroup ssh_auth
  * @{ */
 
-static int ask_userauth(SSH_SESSION *session) {
+static int ask_userauth(ssh_session session) {
   int rc = 0;
 
   enter_function();
@@ -56,12 +62,12 @@ static int ask_userauth(SSH_SESSION *session) {
   return rc;
 }
 
-static int wait_auth_status(SSH_SESSION *session, int kbdint) {
+static int wait_auth_status(ssh_session session, int kbdint) {
   char *auth_methods = NULL;
-  STRING *auth;
+  ssh_string auth;
   int rc = SSH_AUTH_ERROR;
   int cont = 1;
-  u8 partial = 0;
+  uint8_t partial = 0;
 
   enter_function();
 
@@ -139,7 +145,7 @@ static int wait_auth_status(SSH_SESSION *session, int kbdint) {
         break;
       case SSH2_MSG_USERAUTH_BANNER:
         {
-          STRING *banner;
+          ssh_string banner;
 
           banner = buffer_get_ssh_string(session->in_buffer);
           if (banner == NULL) {
@@ -163,7 +169,7 @@ static int wait_auth_status(SSH_SESSION *session, int kbdint) {
   return rc;
 }
 
-int ssh_auth_list(SSH_SESSION *session) {
+int ssh_auth_list(ssh_session session) {
   if (session == NULL) {
     return -1;
   }
@@ -171,7 +177,7 @@ int ssh_auth_list(SSH_SESSION *session) {
   return session->auth_methods;
 }
 
-int ssh_userauth_list(SSH_SESSION *session, const char *username) {
+int ssh_userauth_list(ssh_session session, const char *username) {
   if (session == NULL || username == NULL) {
     return SSH_AUTH_ERROR;
   }
@@ -200,10 +206,10 @@ int ssh_userauth_list(SSH_SESSION *session, const char *username) {
  *                            have to use another method\n
  *          SSH_AUTH_SUCCESS: Authentication success
  */
-int ssh_userauth_none(SSH_SESSION *session, const char *username) {
-  STRING *user = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
+int ssh_userauth_none(ssh_session session, const char *username) {
+  ssh_string user = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
   int rc = SSH_AUTH_ERROR;
 
   enter_function();
@@ -217,13 +223,13 @@ int ssh_userauth_none(SSH_SESSION *session, const char *username) {
 #endif
 
   if (username == NULL) {
-    if (session->options->username == NULL) {
-      if (ssh_options_default_username(session->options) < 0) {
+    if (session->username == NULL) {
+      if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
         leave_function();
         return rc;
       }
     }
-    user = string_from_char(session->options->username);
+    user = string_from_char(session->username);
   } else {
     user = string_from_char(username);
   }
@@ -304,12 +310,12 @@ error:
  * @see privatekey_from_file()
  * @see ssh_userauth_pubkey()
  */
-int ssh_userauth_offer_pubkey(SSH_SESSION *session, const char *username,
-    int type, STRING *publickey) {
-  STRING *user = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
-  STRING *algo = NULL;
+int ssh_userauth_offer_pubkey(ssh_session session, const char *username,
+    int type, ssh_string publickey) {
+  ssh_string user = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
+  ssh_string algo = NULL;
   int rc = SSH_AUTH_ERROR;
 
   enter_function();
@@ -323,13 +329,13 @@ int ssh_userauth_offer_pubkey(SSH_SESSION *session, const char *username,
 #endif
 
   if (username == NULL) {
-    if (session->options->username == NULL) {
-      if (ssh_options_default_username(session->options) < 0) {
+    if (session->username == NULL) {
+      if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
         leave_function();
         return rc;
       }
     }
-    user = string_from_char(session->options->username);
+    user = string_from_char(session->username);
   } else {
     user = string_from_char(username);
   }
@@ -417,13 +423,13 @@ error:
  * @see privatekey_free()
  * @see ssh_userauth_offer_pubkey()
  */
-int ssh_userauth_pubkey(SSH_SESSION *session, const char *username,
-    STRING *publickey, PRIVATE_KEY *privatekey) {
-  STRING *user = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
-  STRING *algo = NULL;
-  STRING *sign = NULL;
+int ssh_userauth_pubkey(ssh_session session, const char *username,
+    ssh_string publickey, ssh_private_key privatekey) {
+  ssh_string user = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
+  ssh_string algo = NULL;
+  ssh_string sign = NULL;
   int rc = SSH_AUTH_ERROR;
 
   enter_function();
@@ -435,13 +441,13 @@ int ssh_userauth_pubkey(SSH_SESSION *session, const char *username,
 #endif
 
   if (username == NULL) {
-    if (session->options->username == NULL) {
-      if (ssh_options_default_username(session->options) < 0) {
+    if (session->username == NULL) {
+      if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
         leave_function();
         return rc;
       }
     }
-    user = string_from_char(session->options->username);
+    user = string_from_char(session->username);
   } else {
     user = string_from_char(username);
   }
@@ -536,14 +542,14 @@ error:
  * @see privatekey_free()
  * @see ssh_userauth_offer_pubkey()
  */
-int ssh_userauth_agent_pubkey(SSH_SESSION *session, const char *username,
-    PUBLIC_KEY *publickey) {
-  STRING *user = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
-  STRING *algo = NULL;
-  STRING *key = NULL;
-  STRING *sign = NULL;
+int ssh_userauth_agent_pubkey(ssh_session session, const char *username,
+    ssh_public_key publickey) {
+  ssh_string user = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
+  ssh_string algo = NULL;
+  ssh_string key = NULL;
+  ssh_string sign = NULL;
   int rc = SSH_AUTH_ERROR;
 
   enter_function();
@@ -553,13 +559,13 @@ int ssh_userauth_agent_pubkey(SSH_SESSION *session, const char *username,
   }
 
   if (username == NULL) {
-    if (session->options->username == NULL) {
-      if (ssh_options_default_username(session->options) < 0) {
+    if (session->username == NULL) {
+      if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
         leave_function();
         return rc;
       }
     }
-    user = string_from_char(session->options->username);
+    user = string_from_char(session->username);
   } else {
     user = string_from_char(username);
   }
@@ -661,12 +667,12 @@ error:
  * @see ssh_userauth_kbdint()
  * @see BURN_STRING
  */
-int ssh_userauth_password(SSH_SESSION *session, const char *username,
+int ssh_userauth_password(ssh_session session, const char *username,
     const char *password) {
-  STRING *user = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
-  STRING *pwd = NULL;
+  ssh_string user = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
+  ssh_string pwd = NULL;
   int rc = SSH_AUTH_ERROR;
 
   enter_function();
@@ -680,13 +686,13 @@ int ssh_userauth_password(SSH_SESSION *session, const char *username,
 #endif
 
   if (username == NULL) {
-    if (session->options->username == NULL) {
-      if (ssh_options_default_username(session->options) < 0) {
+    if (session->username == NULL) {
+      if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
         leave_function();
         return rc;
       }
     }
-    user = string_from_char(session->options->username);
+    user = string_from_char(session->username);
   } else {
     user = string_from_char(username);
   }
@@ -750,27 +756,41 @@ error:
   return rc;
 }
 
-static struct keys_struct keytab[] = {
+#ifdef _MSC_VER
+static const char privKey_1[] = "SSH_DIR/identity";
+static const char pubKey_1[] = "SSH_DIR/identity.pub";
+static const char privKey_2[] = "SSH_DIR/id_dsa";
+static const char pubKey_2[] = "SSH_DIR/id_dsa.pub";
+static const char privKey_3[] = "SSH_DIR/id_rsa";
+static const char pubKey_3[] = "SSH_DIR/id_rsa.pub";
+/** Used different var to allow const char[] declaration */
+static struct ssh_keys_struct keytab[] = {
+  { privKey_1, pubKey_1},
+  { privKey_2, pubKey_2},
+  { privKey_3, pubKey_3},
+  {0}
+};
+#else
+/* This requires GCC extensions */
+static struct ssh_keys_struct keytab[] = {
   {
-    .privatekey = "%s/.ssh/identity",
-    .publickey = "%s/.ssh/identity.pub"
+    .privatekey = "SSH_DIR/identity",
+    .publickey = "SSH_DIR/identity.pub"
   },
   {
-    .privatekey = "%s/.ssh/id_dsa",
-    .publickey = "%s/.ssh/id_dsa.pub",
+    .privatekey = "SSH_DIR/id_dsa",
+    .publickey = "SSH_DIR/id_dsa.pub",
   },
   {
-    .privatekey = "%s/.ssh/id_rsa",
-    .publickey = "%s/.ssh/id_rsa.pub",
+    .privatekey = "SSH_DIR/id_rsa",
+    .publickey = "SSH_DIR/id_rsa.pub",
   },
   {
     .privatekey = NULL,
     .publickey = NULL
   }
 };
-
-/* this function initialy was in the client */
-/* but the fools are the ones who never change mind */
+#endif
 
 /**
  * @brief Tries to automaticaly authenticate with public key and "none"
@@ -792,12 +812,12 @@ static struct keys_struct keytab[] = {
  *
  * @see ssh_userauth_kbdint()
  * @see ssh_userauth_password()
- * @see ssh_options_set_identity()
+ * @see ssh_options_set()
  */
-int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
-  struct public_key_struct *publickey;
-  STRING *pubkey;
-  PRIVATE_KEY *privkey;
+int ssh_userauth_autopubkey(ssh_session session, const char *passphrase) {
+  struct ssh_public_key_struct *publickey;
+  ssh_string pubkey;
+  ssh_private_key privkey;
   char *privkeyfile = NULL;
   char *id = NULL;
   size_t size;
@@ -882,18 +902,18 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
 #endif
 
   size = ARRAY_SIZE(keytab);
-  if (session->options->identity) {
+  if (session->identity) {
     ssh_log(session, SSH_LOG_RARE,
-        "Trying identity file %s\n", session->options->identity);
+        "Trying identity file %s\n", session->identity);
 
-    id = malloc(strlen(session->options->identity) + 1 + 4);
+    id = malloc(strlen(session->identity) + 1 + 4);
     if (id == NULL) {
       leave_function();
       return SSH_AUTH_ERROR;
     }
-    sprintf(id, "%s.pub", session->options->identity);
+    sprintf(id, "%s.pub", session->identity);
 
-    keytab[size - 1].privatekey = session->options->identity;
+    keytab[size - 1].privatekey = session->identity;
     keytab[size - 1].publickey = id;
   }
 
@@ -915,11 +935,12 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
       }
       string_free(pubkey);
       SAFE_FREE(privkeyfile);
+      ssh_log(session, SSH_LOG_RARE, "Publickey authentication error");
       leave_function();
       return rc;
     } else {
       if (rc != SSH_AUTH_SUCCESS){
-        ssh_log(session, SSH_LOG_RARE, "Public key refused by server");
+        ssh_log(session, SSH_LOG_RARE, "Publickey refused by server");
         string_free(pubkey);
         pubkey = NULL;
         SAFE_FREE(privkeyfile);
@@ -929,6 +950,7 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
     }
 
     /* Public key accepted by server! */
+    ssh_log(session, SSH_LOG_RARE, "Trying to read privatekey %s", privkeyfile);
     privkey = privatekey_from_file(session, privkeyfile, type, passphrase);
     if (privkey == NULL) {
       ssh_log(session, SSH_LOG_FUNCTIONS,
@@ -995,10 +1017,19 @@ int ssh_userauth_autopubkey(SSH_SESSION *session, const char *passphrase) {
   return SSH_AUTH_DENIED;
 }
 
-static struct ssh_kbdint *kbdint_new(void) {
-  struct ssh_kbdint *kbd;
+struct ssh_kbdint_struct {
+    uint32_t nprompts;
+    char *name;
+    char *instruction;
+    char **prompts;
+    unsigned char *echo; /* bool array */
+    char **answers;
+};
 
-  kbd = malloc(sizeof (struct ssh_kbdint));
+static ssh_kbdint kbdint_new(void) {
+  ssh_kbdint kbd;
+
+  kbd = malloc(sizeof (struct ssh_kbdint_struct));
   if (kbd == NULL) {
     return NULL;
   }
@@ -1008,7 +1039,7 @@ static struct ssh_kbdint *kbdint_new(void) {
 }
 
 
-static void kbdint_free(struct ssh_kbdint *kbd) {
+static void kbdint_free(ssh_kbdint kbd) {
   int i, n;
 
   if (kbd == NULL) {
@@ -1039,7 +1070,7 @@ static void kbdint_free(struct ssh_kbdint *kbd) {
   SAFE_FREE(kbd);
 }
 
-static void kbdint_clean(struct ssh_kbdint *kbd) {
+static void kbdint_clean(ssh_kbdint kbd) {
   int i, n;
 
   if (kbd == NULL) {
@@ -1073,12 +1104,12 @@ static void kbdint_clean(struct ssh_kbdint *kbd) {
 
 /* this function sends the first packet as explained in section 3.1
  * of the draft */
-static int kbdauth_init(SSH_SESSION *session, const char *user,
+static int kbdauth_init(ssh_session session, const char *user,
     const char *submethods) {
-  STRING *usr = NULL;
-  STRING *sub = NULL;
-  STRING *service = NULL;
-  STRING *method = NULL;
+  ssh_string usr = NULL;
+  ssh_string sub = NULL;
+  ssh_string service = NULL;
+  ssh_string method = NULL;
   int rc = SSH_AUTH_ERROR;
 
   enter_function();
@@ -1133,12 +1164,12 @@ error:
   return rc;
 }
 
-static int kbdauth_info_get(SSH_SESSION *session) {
-  STRING *name; /* name of the "asking" window showed to client */
-  STRING *instruction;
-  STRING *tmp;
-  u32 nprompts;
-  u32 i;
+static int kbdauth_info_get(ssh_session session) {
+  ssh_string name; /* name of the "asking" window showed to client */
+  ssh_string instruction;
+  ssh_string tmp;
+  uint32_t nprompts;
+  uint32_t i;
 
   enter_function();
 
@@ -1250,10 +1281,10 @@ static int kbdauth_info_get(SSH_SESSION *session) {
 }
 
 /* sends challenge back to the server */
-static int kbdauth_send(SSH_SESSION *session) {
-  STRING *answer = NULL;
+static int kbdauth_send(ssh_session session) {
+  ssh_string answer = NULL;
   int rc = SSH_AUTH_ERROR;
-  u32 i;
+  uint32_t i;
 
   enter_function();
 
@@ -1323,7 +1354,7 @@ error:
  * @see ssh_userauth_kbdint_getprompt()
  * @see ssh_userauth_kbdint_setanswer()
  */
-int ssh_userauth_kbdint(SSH_SESSION *session, const char *user,
+int ssh_userauth_kbdint(ssh_session session, const char *user,
     const char *submethods) {
   int rc = SSH_AUTH_ERROR;
 
@@ -1337,12 +1368,12 @@ int ssh_userauth_kbdint(SSH_SESSION *session, const char *user,
   if (session->kbdint == NULL) {
     /* first time we call. we must ask for a challenge */
     if (user == NULL) {
-      if ((user = session->options->username) == NULL) {
-        if (ssh_options_default_username(session->options) < 0) {
+      if ((user = session->username) == NULL) {
+        if (ssh_options_set(session, SSH_OPTIONS_USER, NULL) < 0) {
           leave_function();
           return SSH_AUTH_ERROR;
         } else {
-          user = session->options->username;
+          user = session->username;
         }
       }
     }
@@ -1403,7 +1434,7 @@ int ssh_userauth_kbdint(SSH_SESSION *session, const char *user,
  *
  * @returns             The number of prompts.
  */
-int ssh_userauth_kbdint_getnprompts(SSH_SESSION *session) {
+int ssh_userauth_kbdint_getnprompts(ssh_session session) {
   return session->kbdint->nprompts;
 }
 
@@ -1417,7 +1448,7 @@ int ssh_userauth_kbdint_getnprompts(SSH_SESSION *session) {
  *
  * @returns             The name of the message block. Do not free it.
  */
-const char *ssh_userauth_kbdint_getname(SSH_SESSION *session) {
+const char *ssh_userauth_kbdint_getname(ssh_session session) {
   return session->kbdint->name;
 }
 
@@ -1432,7 +1463,7 @@ const char *ssh_userauth_kbdint_getname(SSH_SESSION *session) {
  * @returns             The instruction of the message block.
  */
 
-const char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session) {
+const char *ssh_userauth_kbdint_getinstruction(ssh_session session) {
   return session->kbdint->instruction;
 }
 
@@ -1452,7 +1483,7 @@ const char *ssh_userauth_kbdint_getinstruction(SSH_SESSION *session) {
  *
  * @returns             A pointer to the prompt. Do not free it.
  */
-const char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i,
+const char *ssh_userauth_kbdint_getprompt(ssh_session session, unsigned int i,
     char *echo) {
   if (i > session->kbdint->nprompts) {
     return NULL;
@@ -1473,7 +1504,7 @@ const char *ssh_userauth_kbdint_getprompt(SSH_SESSION *session, unsigned int i,
  * \param answer answer to give to server
  * \return 0 on success, < 0 on error.
  */
-int ssh_userauth_kbdint_setanswer(SSH_SESSION *session, unsigned int i,
+int ssh_userauth_kbdint_setanswer(ssh_session session, unsigned int i,
     const char *answer) {
   if (session == NULL || answer == NULL || i > session->kbdint->nprompts) {
     return -1;
