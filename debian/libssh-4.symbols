@@ -1,4 +1,4 @@
-libssh.so.3 libssh-3 #MINVER#
+libssh.so.4 libssh-4 #MINVER#
  _privatekey_from_file@Base 0.3.4
  agent_close@Base 0.3.4
  agent_free@Base 0.3.4

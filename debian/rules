@@ -8,10 +8,10 @@ include /usr/share/cdbs/1/class/cmake.mk
 include /usr/share/cdbs/1/rules/debhelper.mk
 #include /usr/share/cdbs/1/rules/simple-patchsys.mk
 
-DEB_DBG_PACKAGE_libssh-3 = libssh-dbg
+DEB_DBG_PACKAGE_libssh-4 = libssh-dbg
 
 common-build-indep::
 	cd obj-*/; make doc
 
-install/libssh-3::
-	install -D -m 644 debian/libssh-3.lintian-overrides debian/libssh-3/usr/share/lintian/overrides/libssh-3
+install/libssh-4::
+	install -D -m 644 debian/libssh-4.lintian-overrides debian/libssh-4/usr/share/lintian/overrides/libssh-4

@@ -1,2 +1,0 @@
-# We use libssh-3 name to avoid name clash with libssh2 package.
-libssh-3: package-name-doesnt-match-sonames libssh3
