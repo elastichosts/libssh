@@ -3,8 +3,9 @@ libssh (0.4.0-1) UNRELEASED; urgency=low
   * New upstream release.
     - Bump soname
   * Readd static library in -dev package
+  * Let dh_lintian install override file
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 12 Nov 2009 01:25:52 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 12 Nov 2009 01:27:17 +0100
 
 libssh (0.3.4-3) unstable; urgency=low
 

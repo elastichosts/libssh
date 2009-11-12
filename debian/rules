@@ -12,6 +12,3 @@ DEB_DBG_PACKAGE_libssh-4 = libssh-dbg
 
 common-build-indep::
 	cd obj-*/; make doc
-
-install/libssh-4::
-	install -D -m 644 debian/libssh-4.lintian-overrides debian/libssh-4/usr/share/lintian/overrides/libssh-4
