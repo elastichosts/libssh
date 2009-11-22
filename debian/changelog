@@ -5,8 +5,9 @@ libssh (0.4.0-1) UNRELEASED; urgency=low
     - Adjust .symbols file
   * Readd static library in -dev package
   * Let dh_lintian install override file
+  * debian/README.Debian: Update file
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 12 Nov 2009 01:33:14 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Sun, 22 Nov 2009 20:16:51 +0100
 
 libssh (0.3.4-3) unstable; urgency=low
 
