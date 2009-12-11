@@ -14,6 +14,9 @@
 
 /************************** HEADER FILES *************************/
 
+/* Define to 1 if you have the <argp.h> header file. */
+#cmakedefine HAVE_ARGP_H 1
+
 /* Define to 1 if you have the <pty.h> header file. */
 #cmakedefine HAVE_PTY_H 1
 
@@ -79,6 +82,9 @@
 
 /* Define to 1 if you want to enable debug output for crypto functions */
 #cmakedefine DEBUG_CRYPTO 1
+
+/* Define to 1 if you want to enable pcap output support (experimental) */
+#cmakedefine WITH_PCAP 1
 
 /* Define to 1 if you want to enable calltrace debug output */
 #cmakedefine DEBUG_CALLTRACE 1
