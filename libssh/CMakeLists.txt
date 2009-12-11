@@ -101,6 +101,14 @@ set(libssh_SRCS
   wrapper.c
 )
 
+if (WITH_PCAP)
+  set(libssh_SRCS
+    ${libssh_SRCS}
+    pcap.c
+  )
+
+endif (WITH_PCAP)
+
 if (WITH_SFTP)
   set(libssh_SRCS
     ${libssh_SRCS}

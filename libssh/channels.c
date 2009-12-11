@@ -79,6 +79,7 @@ ssh_channel channel_new(ssh_session session) {
 
   channel->stderr_buffer = buffer_new();
   if (channel->stderr_buffer == NULL) {
+    buffer_free(channel->stdout_buffer);
     SAFE_FREE(channel);
     return NULL;
   }
@@ -616,12 +617,14 @@ int channel_default_bufferize(ssh_channel channel, void *data, int len,
     if (channel->stdout_buffer == NULL) {
       channel->stdout_buffer = buffer_new();
       if (channel->stdout_buffer == NULL) {
+        ssh_set_error_oom(session);
         return -1;
       }
     }
 
     if (buffer_add_data(channel->stdout_buffer, data, len) < 0) {
       buffer_free(channel->stdout_buffer);
+      channel->stdout_buffer = NULL;
       return -1;
     }
   } else {
@@ -629,12 +632,14 @@ int channel_default_bufferize(ssh_channel channel, void *data, int len,
     if (channel->stderr_buffer == NULL) {
       channel->stderr_buffer = buffer_new();
       if (channel->stderr_buffer == NULL) {
+        ssh_set_error_oom(session);
         return -1;
       }
     }
 
     if (buffer_add_data(channel->stderr_buffer, data, len) < 0) {
       buffer_free(channel->stderr_buffer);
+      channel->stderr_buffer = NULL;
       return -1;
     }
   }
@@ -1838,7 +1843,8 @@ int channel_read_buffer(ssh_channel channel, ssh_buffer buffer, uint32_t count,
  * @param is_stderr     A boolean value to mark reading from the stderr flow.
  *
  * @return The number of bytes read, 0 on end of file or SSH_ERROR on error.
- *
+ * @warning This function may return less than count bytes of data, and won't
+ *          block until count bytes have been read.
  * @warning The read function using a buffer has been renamed to
  *          channel_read_buffer().
  */
@@ -1876,9 +1882,10 @@ int channel_read(ssh_channel channel, void *dest, uint32_t count, int is_stderr)
     }
   }
 
-  /* block reading if asked bytes=0 */
-  while (buffer_get_rest_len(stdbuf) == 0 ||
-      buffer_get_rest_len(stdbuf) < count) {
+  /* block reading until at least one byte is read 
+  *  and ignore the trivial case count=0
+  */
+  while (buffer_get_rest_len(stdbuf) == 0 && count > 0) {
     if (channel->remote_eof && buffer_get_rest_len(stdbuf) == 0) {
       leave_function();
       return 0;
