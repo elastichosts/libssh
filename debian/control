@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Laurent Bigonville <bigon@debian.org>
 Build-Depends: cdbs, debhelper (>= 7), cmake (>= 2.6), libssl-dev, libz-dev, doxygen
 Standards-Version: 3.8.3
-Vcs-Git: git://git.debian.org/collab-maint/libssh.git
+Vcs-Git: git://git.debian.org/git/collab-maint/libssh.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/libssh.git
 Homepage: http://www.libssh.org/
 

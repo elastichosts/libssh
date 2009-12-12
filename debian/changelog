@@ -1,4 +1,4 @@
-libssh (0.4.0-1) UNRELEASED; urgency=low
+libssh (0.4.0-1) unstable; urgency=low
 
   * New upstream release.
     - Bump soname
@@ -8,7 +8,7 @@ libssh (0.4.0-1) UNRELEASED; urgency=low
   * debian/README.Debian: Update file
   * debian/rules: Add list-missing rule
 
- -- Laurent Bigonville <bigon@debian.org>  Sat, 12 Dec 2009 14:28:35 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 12 Dec 2009 14:29:12 +0100
 
 libssh (0.3.4-3) unstable; urgency=low
 
