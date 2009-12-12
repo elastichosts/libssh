@@ -1,2 +1,3 @@
 debian/tmp/usr/include/libssh/
-debian/tmp/usr/lib/libssh.{so,a}
+debian/tmp/usr/lib/libssh.so
+debian/tmp/usr/lib/libssh_static.a
