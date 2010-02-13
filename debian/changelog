@@ -1,8 +1,9 @@
 libssh (0.4.1-1) UNRELEASED; urgency=low
 
   * New upstream release
+  * debian/control: Bump Standards-Version (no further changes)
 
- -- Laurent Bigonville <bigon@debian.org>  Sat, 13 Feb 2010 19:54:55 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 13 Feb 2010 19:57:06 +0100
 
 libssh (0.4.0-1) unstable; urgency=low
 
