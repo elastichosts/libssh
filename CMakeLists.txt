@@ -10,9 +10,11 @@ set(APPLICATION_VERSION "0.4.0")
 
 set(APPLICATION_VERSION_MAJOR "0")
 set(APPLICATION_VERSION_MINOR "4")
-set(APPLICATION_VERSION_PATCH "0")
+set(APPLICATION_VERSION_PATCH "1")
 
-set(LIBRARY_VERSION "4.0.0")
+set(APPLICATION_VERSION "${APPLICATION_VERSION_MAJOR}${APPLICATION_VERSION_MINOR}${APPLICATION_VERSION_PATCH}")
+
+set(LIBRARY_VERSION "4.0.1")
 set(LIBRARY_SOVERSION "4")
 
 # where to look first for cmake modules, before ${CMAKE_ROOT}/Modules/ is checked
@@ -61,7 +63,6 @@ configure_file(config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 add_subdirectory(doc)
 add_subdirectory(include)
 add_subdirectory(libssh)
-add_subdirectory(tests)
 
 # build samples
 include_directories(${CMAKE_SOURCE_DIR}/include)
