@@ -1,10 +1,10 @@
-libssh (0.4.1-1) UNRELEASED; urgency=low
+libssh (0.4.1-1) unstable; urgency=low
 
   * New upstream release
   * debian/control: Bump Standards-Version (no further changes)
   * Use new source package format '3.0 (quilt)'
 
- -- Laurent Bigonville <bigon@debian.org>  Sat, 13 Feb 2010 20:02:40 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 13 Feb 2010 20:18:18 +0100
 
 libssh (0.4.0-1) unstable; urgency=low
 
