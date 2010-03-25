@@ -158,6 +158,52 @@ uint64_t ntohll(uint64_t a) {
 #endif
 }
 
+#ifdef _WIN32
+char *ssh_get_local_username(ssh_session session) {
+  DWORD size = 0;
+  char *user;
+
+  /* get the size */
+  GetUserName(NULL, &size);
+
+  user = malloc(size);
+  if (user == NULL) {
+    ssh_set_error_oom(session);
+    return NULL;
+  }
+
+  if (GetUserName(user, &size)) {
+    return user;
+  }
+
+  return NULL;
+}
+#else
+char *ssh_get_local_username(ssh_session session) {
+    struct passwd pwd;
+    struct passwd *pwdbuf;
+    char buf[NSS_BUFLEN_PASSWD];
+    char *name;
+    int rc;
+
+    rc = getpwuid_r(getuid(), &pwd, buf, NSS_BUFLEN_PASSWD, &pwdbuf);
+    if (rc != 0) {
+        ssh_set_error(session, SSH_FATAL,
+            "Couldn't retrieve information for current user!");
+        return NULL;
+    }
+
+    name = strdup(pwd.pw_name);
+
+    if (name == NULL) {
+      ssh_set_error_oom(session);
+      return NULL;
+    }
+
+    return name;
+}
+#endif
+
 /**
  * @brief Check if libssh is the required version or get the version
  * string.
@@ -222,7 +268,7 @@ static struct ssh_iterator *ssh_iterator_new(const void *data){
   return iterator;
 }
 
-int ssh_list_add(struct ssh_list *list,const void *data){
+int ssh_list_append(struct ssh_list *list,const void *data){
   struct ssh_iterator *iterator=ssh_iterator_new(data);
   if(!iterator)
     return SSH_ERROR;
@@ -234,6 +280,25 @@ int ssh_list_add(struct ssh_list *list,const void *data){
     list->end->next=iterator;
     list->end=iterator;
   }
+  return SSH_OK;
+}
+
+int ssh_list_prepend(struct ssh_list *list, const void *data){
+  struct ssh_iterator *it = ssh_iterator_new(data);
+
+  if (it == NULL) {
+    return SSH_ERROR;
+  }
+
+  if (list->end == NULL) {
+    /* list is empty */
+    list->root = list->end = it;
+  } else {
+    /* set as new root */
+    it->next = list->root;
+    list->root = it;
+  }
+
   return SSH_OK;
 }
 
@@ -261,7 +326,14 @@ void ssh_list_remove(struct ssh_list *list, struct ssh_iterator *iterator){
   SAFE_FREE(iterator);
 }
 
-const void *_ssh_list_get_head(struct ssh_list *list){
+/** @internal
+ * @brief Removes the top element of the list and returns the data value attached
+ * to it
+ * @param list the ssh_list
+ * @returns pointer to the element being stored in head, or
+ * NULL if the list is empty.
+ */
+const void *_ssh_list_pop_head(struct ssh_list *list){
   struct ssh_iterator *iterator=list->root;
   const void *data;
   if(!list->root)
