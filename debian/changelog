@@ -2,8 +2,9 @@ libssh (0.4.2-1) UNRELEASED; urgency=low
 
   * New upstream release
     - 0001-Fix-symbols-visibility.patch: Only export needed symbols
+    - debian/libssh-4.symbols: Update symbols file
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 25 Mar 2010 13:31:55 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 25 Mar 2010 13:34:07 +0100
 
 libssh (0.4.1-1) unstable; urgency=low
 

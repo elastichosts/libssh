@@ -1,51 +1,17 @@
 libssh.so.4 libssh-4 #MINVER#
- _privatekey_from_file@Base 0.3.4
- _ssh_list_get_head@Base 0.3.91
- agent_close@Base 0.3.4
- agent_free@Base 0.3.4
- agent_get_first_ident@Base 0.3.4
- agent_get_ident_count@Base 0.3.4
- agent_get_next_ident@Base 0.3.4
- agent_is_running@Base 0.3.4
- agent_new@Base 0.3.4
- agent_sign_data@Base 0.3.4
- base64_to_bin@Base 0.3.4
- bin_to_base64@Base 0.3.4
- buffer_add_attributes@Base 0.3.4
- buffer_add_buffer@Base 0.3.4
- buffer_add_data@Base 0.3.4
- buffer_add_ssh_string@Base 0.3.4
- buffer_add_u16@Base 0.4.0
- buffer_add_u32@Base 0.3.4
- buffer_add_u64@Base 0.3.4
- buffer_add_u8@Base 0.3.4
  buffer_free@Base 0.3.4
  buffer_get@Base 0.3.4
- buffer_get_data@Base 0.3.4
  buffer_get_len@Base 0.3.4
- buffer_get_mpint@Base 0.3.4
- buffer_get_rest@Base 0.3.4
- buffer_get_rest_len@Base 0.3.4
- buffer_get_ssh_string@Base 0.3.4
- buffer_get_u32@Base 0.3.4
- buffer_get_u64@Base 0.3.4
- buffer_get_u8@Base 0.3.4
  buffer_new@Base 0.3.4
- buffer_pass_bytes@Base 0.3.4
- buffer_pass_bytes_end@Base 0.3.4
- buffer_prepend_data@Base 0.3.4
- buffer_reinit@Base 0.3.4
  channel_accept_x11@Base 0.3.91
  channel_change_pty_size@Base 0.3.4
  channel_close@Base 0.3.4
- channel_default_bufferize@Base 0.3.4
  channel_forward_accept@Base 0.3.91
  channel_forward_cancel@Base 0.3.91
  channel_forward_listen@Base 0.3.91
  channel_free@Base 0.3.4
  channel_get_exit_status@Base 0.3.4
  channel_get_session@Base 0.3.4
- channel_handle@Base 0.3.4
  channel_is_closed@Base 0.3.4
  channel_is_eof@Base 0.3.4
  channel_is_open@Base 0.3.4
@@ -69,68 +35,19 @@ libssh.so.4 libssh-4 #MINVER#
  channel_send_eof@Base 0.3.4
  channel_set_blocking@Base 0.3.4
  channel_write@Base 0.3.4
- channel_write_common@Base 0.3.91
  channel_write_stderr@Base 0.3.91
- compress_buffer@Base 0.3.4
- crypt_set_algorithms@Base 0.3.4
- crypt_set_algorithms_server@Base 0.3.4
- crypto_free@Base 0.3.4
- crypto_new@Base 0.3.4
- decompress_buffer@Base 0.3.4
- default_methods@Base 0.3.4
- dh_build_k@Base 0.3.4
- dh_generate_e@Base 0.3.4
- dh_generate_f@Base 0.3.4
- dh_generate_x@Base 0.3.4
- dh_generate_y@Base 0.3.4
- dh_get_e@Base 0.3.4
- dh_get_f@Base 0.3.4
- dh_import_e@Base 0.3.4
- dh_import_f@Base 0.3.4
- dh_import_pubkey@Base 0.3.4
- dir_expand_dup@Base 0.3.91
- generate_session_keys@Base 0.3.4
- hashbufin_add_cookie@Base 0.3.4
- hashbufout_add_cookie@Base 0.3.4
- hmac_final@Base 0.3.4
- hmac_init@Base 0.3.4
- hmac_update@Base 0.3.4
- make_bignum_string@Base 0.3.4
- make_sessionid@Base 0.3.4
- make_string_bn@Base 0.3.4
- match_hostname@Base 0.3.4
- md5_final@Base 0.3.4
- md5_init@Base 0.3.4
- md5_update@Base 0.3.4
- message_handle@Base 0.3.91
- ntohll@Base 0.3.4
- packet_decrypt@Base 0.3.4
- packet_decrypt_len@Base 0.3.4
- packet_encrypt@Base 0.3.4
- packet_flush@Base 0.3.4
- packet_hmac_verify@Base 0.3.4
- packet_parse@Base 0.3.4
- packet_read@Base 0.3.4
- packet_send@Base 0.3.4
- packet_translate@Base 0.3.4
- packet_wait@Base 0.3.4
  privatekey_free@Base 0.3.4
  privatekey_from_file@Base 0.3.4
  publickey_free@Base 0.3.4
  publickey_from_file@Base 0.3.4
  publickey_from_privatekey@Base 0.3.4
- publickey_from_string@Base 0.3.4
- publickey_make_dss@Base 0.3.4
- publickey_make_rsa@Base 0.3.4
  publickey_to_string@Base 0.3.4
- set_kex@Base 0.3.4
  sftp_async_read@Base 0.3.4
  sftp_async_read_begin@Base 0.3.4
  sftp_attributes_free@Base 0.3.4
  sftp_canonicalize_path@Base 0.3.4
  sftp_chmod@Base 0.3.4
  sftp_chown@Base 0.3.4
- sftp_client_message_free@Base 0.3.4
  sftp_close@Base 0.3.4
  sftp_closedir@Base 0.3.4
  sftp_dir_eof@Base 0.3.4
@@ -143,32 +60,17 @@ libssh.so.4 libssh-4 #MINVER#
  sftp_free@Base 0.3.4
  sftp_fstat@Base 0.3.4
  sftp_fstatvfs@Base 0.3.91
- sftp_get_client_message@Base 0.3.4
  sftp_get_error@Base 0.3.4
- sftp_handle@Base 0.3.4
- sftp_handle_alloc@Base 0.3.4
- sftp_handle_remove@Base 0.3.4
  sftp_init@Base 0.3.4
  sftp_lstat@Base 0.3.4
  sftp_mkdir@Base 0.3.4
  sftp_new@Base 0.3.4
  sftp_open@Base 0.3.4
  sftp_opendir@Base 0.3.4
- sftp_packet_free@Base 0.3.4
- sftp_packet_read@Base 0.3.4
- sftp_packet_write@Base 0.3.4
- sftp_parse_attr@Base 0.3.4
  sftp_read@Base 0.3.4
  sftp_readdir@Base 0.3.4
  sftp_readlink@Base 0.3.4
  sftp_rename@Base 0.3.4
- sftp_reply_attr@Base 0.3.4
- sftp_reply_data@Base 0.3.4
- sftp_reply_handle@Base 0.3.4
- sftp_reply_name@Base 0.3.4
- sftp_reply_names@Base 0.3.4
- sftp_reply_names_add@Base 0.3.4
- sftp_reply_status@Base 0.3.4
  sftp_rewind@Base 0.3.4
  sftp_rmdir@Base 0.3.4
  sftp_seek64@Base 0.3.4
@@ -186,15 +88,6 @@ libssh.so.4 libssh-4 #MINVER#
  sftp_unlink@Base 0.3.4
  sftp_utimes@Base 0.3.4
  sftp_write@Base 0.3.4
- sha1@Base 0.3.4
- sha1_final@Base 0.3.4
- sha1_init@Base 0.3.4
- sha1_update@Base 0.3.4
- sig_verify@Base 0.3.91
- signature_free@Base 0.3.4
- signature_from_string@Base 0.3.4
- signature_verify@Base 0.3.4
- space_tokenize@Base 0.3.4
  ssh_accept@Base 0.3.4
  ssh_auth_list@Base 0.3.4
  ssh_basename@Base 0.3.4
@@ -207,52 +100,27 @@ libssh.so.4 libssh-4 #MINVER#
  ssh_bind_options_set@Base 0.3.91
  ssh_bind_set_blocking@Base 0.3.4
  ssh_bind_set_fd@Base 0.3.4
- ssh_channel_from_local@Base 0.3.4
- ssh_channel_new_id@Base 0.3.4
  ssh_clean_pubkey_hash@Base 0.3.91
- ssh_config_parse_file@Base 0.3.91
  ssh_connect@Base 0.3.4
- ssh_connect_host@Base 0.3.4
  ssh_copyright@Base 0.3.4
- ssh_crc32@Base 0.3.4
- ssh_crypto_finalize@Base 0.3.4
- ssh_crypto_init@Base 0.3.4
  ssh_dirname@Base 0.3.4
  ssh_disconnect@Base 0.3.4
- ssh_do_sign@Base 0.3.4
- ssh_do_sign_with_agent@Base 0.3.4
- ssh_encrypt_rsa1@Base 0.3.4
- ssh_execute_message_callbacks@Base 0.3.91
- ssh_file_readaccess_ok@Base 0.3.4
  ssh_finalize@Base 0.3.4
- ssh_find_matching@Base 0.3.4
  ssh_free@Base 0.3.91
- ssh_get_banner@Base 0.3.4
  ssh_get_disconnect_message@Base 0.3.4
  ssh_get_error@Base 0.3.4
  ssh_get_error_code@Base 0.3.4
  ssh_get_fd@Base 0.3.4
  ssh_get_hexa@Base 0.3.4
  ssh_get_issue_banner@Base 0.3.4
- ssh_get_kex1@Base 0.3.4
- ssh_get_kex@Base 0.3.4
  ssh_get_openssh_version@Base 0.3.4
  ssh_get_pubkey@Base 0.3.4
  ssh_get_pubkey_hash@Base 0.3.4
  ssh_get_random@Base 0.3.4
  ssh_get_status@Base 0.3.4
- ssh_get_user_home_dir@Base 0.3.4
  ssh_get_version@Base 0.3.4
- ssh_handle_packets@Base 0.3.4
  ssh_init@Base 0.3.4
  ssh_is_server_known@Base 0.3.4
- ssh_kex_nums@Base 0.3.4
- ssh_list_add@Base 0.3.91
- ssh_list_free@Base 0.3.91
- ssh_list_get_iterator@Base 0.3.91
- ssh_list_kex@Base 0.3.4
- ssh_list_new@Base 0.3.91
- ssh_list_remove@Base 0.3.91
  ssh_log@Base 0.3.4
  ssh_message_auth_password@Base 0.3.4
  ssh_message_auth_publickey@Base 0.3.91
@@ -290,90 +158,36 @@ libssh.so.4 libssh-4 #MINVER#
  ssh_options_getopt@Base 0.3.4
  ssh_options_parse_config@Base 0.3.91
  ssh_options_set@Base 0.3.91
- ssh_options_set_algo@Base 0.3.91
- ssh_poll@Base 0.3.4
- ssh_poll_add_events@Base 0.3.91
- ssh_poll_ctx_add@Base 0.3.91
- ssh_poll_ctx_dopoll@Base 0.4.0
- ssh_poll_ctx_free@Base 0.3.91
- ssh_poll_ctx_new@Base 0.3.91
- ssh_poll_ctx_remove@Base 0.3.91
- ssh_poll_free@Base 0.3.91
- ssh_poll_get_ctx@Base 0.3.91
- ssh_poll_get_events@Base 0.3.91
- ssh_poll_get_fd@Base 0.3.91
- ssh_poll_new@Base 0.3.91
- ssh_poll_remove_events@Base 0.3.91
- ssh_poll_set_callback@Base 0.3.91
- ssh_poll_set_events@Base 0.3.91
- ssh_print_bignum@Base 0.3.4
  ssh_print_hexa@Base 0.3.4
- ssh_regex_finalize@Base 0.3.91
- ssh_regex_init@Base 0.3.91
+ ssh_publickey_to_file@Base 0.4.2
  ssh_scp_accept_request@Base 0.3.91
  ssh_scp_close@Base 0.3.91
  ssh_scp_deny_request@Base 0.3.91
  ssh_scp_free@Base 0.3.91
  ssh_scp_init@Base 0.3.91
- ssh_scp_integer_mode@Base 0.3.91
  ssh_scp_leave_directory@Base 0.3.91
  ssh_scp_new@Base 0.3.91
  ssh_scp_pull_request@Base 0.3.91
  ssh_scp_push_directory@Base 0.3.91
  ssh_scp_push_file@Base 0.3.91
  ssh_scp_read@Base 0.3.91
- ssh_scp_read_string@Base 0.3.91
  ssh_scp_request_get_filename@Base 0.3.91
  ssh_scp_request_get_permissions@Base 0.3.91
  ssh_scp_request_get_size@Base 0.3.91
  ssh_scp_request_get_warning@Base 0.3.91
- ssh_scp_response@Base 0.3.91
- ssh_scp_string_mode@Base 0.3.91
  ssh_scp_write@Base 0.3.91
  ssh_select@Base 0.3.4
- ssh_send_banner@Base 0.3.4
- ssh_send_kex@Base 0.3.4
  ssh_service_request@Base 0.3.4
  ssh_set_blocking@Base 0.3.4
  ssh_set_callbacks@Base 0.3.91
- ssh_set_error@Base 0.3.4
- ssh_set_error_invalid@Base 0.3.91
- ssh_set_error_oom@Base 0.3.91
  ssh_set_fd_except@Base 0.3.4
  ssh_set_fd_toread@Base 0.3.4
  ssh_set_fd_towrite@Base 0.3.4
  ssh_set_message_callback@Base 0.3.91
- ssh_sign_session_id@Base 0.3.4
  ssh_silent_disconnect@Base 0.3.4
- ssh_socket_blocking_flush@Base 0.3.4
- ssh_socket_close@Base 0.3.4
- ssh_socket_completeread@Base 0.3.4
- ssh_socket_completewrite@Base 0.3.4
- ssh_socket_data_available@Base 0.3.4
- ssh_socket_data_writable@Base 0.3.4
- ssh_socket_fd_isset@Base 0.3.4
- ssh_socket_fd_set@Base 0.3.4
- ssh_socket_free@Base 0.3.4
- ssh_socket_get_fd@Base 0.3.4
- ssh_socket_get_status@Base 0.3.4
- ssh_socket_init@Base 0.3.4
- ssh_socket_is_open@Base 0.3.4
- ssh_socket_new@Base 0.3.4
- ssh_socket_nonblocking_flush@Base 0.3.4
- ssh_socket_poll@Base 0.3.4
- ssh_socket_read@Base 0.3.4
- ssh_socket_set_except@Base 0.3.4
- ssh_socket_set_fd@Base 0.3.4
- ssh_socket_set_toread@Base 0.3.4
- ssh_socket_set_towrite@Base 0.3.4
- ssh_socket_unix@Base 0.3.4
- ssh_socket_wait_for_data@Base 0.3.4
- ssh_socket_write@Base 0.3.4
- ssh_type_from_name@Base 0.3.4
- ssh_type_to_char@Base 0.3.4
+ ssh_try_publickey_from_file@Base 0.4.2
  ssh_userauth_agent_pubkey@Base 0.3.4
  ssh_userauth_autopubkey@Base 0.3.4
- ssh_userauth_build_digest@Base 0.3.91
  ssh_userauth_kbdint@Base 0.3.4
  ssh_userauth_kbdint_getinstruction@Base 0.3.4
  ssh_userauth_kbdint_getname@Base 0.3.4
@@ -396,6 +210,3 @@ libssh.so.4 libssh-4 #MINVER#
  string_len@Base 0.3.4
  string_new@Base 0.3.4
  string_to_char@Base 0.3.4
- supported_methods@Base 0.3.4
- try_publickey_from_file@Base 0.3.4
- verify_existing_algo@Base 0.3.4
