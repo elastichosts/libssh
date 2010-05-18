@@ -159,6 +159,7 @@ libssh.so.4 libssh-4 #MINVER#
  ssh_options_parse_config@Base 0.3.91
  ssh_options_set@Base 0.3.91
  ssh_print_hexa@Base 0.3.4
+ ssh_privatekey_type@Base 0.4.3
  ssh_publickey_to_file@Base 0.4.2
  ssh_scp_accept_request@Base 0.3.91
  ssh_scp_close@Base 0.3.91
