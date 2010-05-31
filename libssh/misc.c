@@ -554,7 +554,7 @@ char *ssh_path_expand_tilde(const char *d) {
     if (lh > 0) {
         memcpy(r, h, lh);
     }
-    memcpy(r + lh, p, ld);
+    memcpy(r + lh, p, ld + 1);
 
     return r;
 }
@@ -634,6 +634,7 @@ char *ssh_path_expand_escape(ssh_session session, const char *s) {
         }
         l = strlen(buf);
         strcat(buf + l, x);
+        buf[i] = '\0';
         SAFE_FREE(x);
     }
 
