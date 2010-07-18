@@ -71,28 +71,38 @@ int ssh_poll(ssh_pollfd_t *fds, nfds_t nfds, int timeout) {
 
 #include <sys/types.h>
 
+typedef int (*poll_fn)(ssh_pollfd_t *, nfds_t, int);
+static poll_fn win_poll;
+
 #ifdef _WIN32
 #ifndef STRICT
 #define STRICT
-#endif
+#endif /* STRICT */
 
 #include <time.h>
 #include <windows.h>
 #include <winsock2.h>
 
 #define WS2_LIBRARY "ws2_32.dll"
-typedef int (*poll_fn)(ssh_pollfd_t *, nfds_t, int);
-
-static poll_fn win_poll;
 static HINSTANCE hlib;
 
-#else
+#else /* _WIN32 */
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <sys/time.h>
-#endif
+#endif /* _WIN32 */
 
+
+/*
+ * This is a poll(2)-emulation using select for systems not providing a native
+ * poll implementation.
+ *
+ * Keep in mind that select is terribly inefficient. The interface is simply not
+ * meant to be used with maximum descriptor value greater, say, 32 or so.  With
+ * a value as high as 1024 on Linux you'll pay dearly in every single call.
+ * poll() will be orders of magnitude faster.
+ */
 static int bsd_poll(ssh_pollfd_t *fds, nfds_t nfds, int timeout) {
   fd_set readfds, writefds, exceptfds;
   struct timeval tv, *ptv;
@@ -110,10 +120,16 @@ static int bsd_poll(ssh_pollfd_t *fds, nfds_t nfds, int timeout) {
   FD_ZERO (&exceptfds);
 
   /* compute fd_sets and find largest descriptor */
-  for (max_fd = -1, i = 0; i < nfds; i++) {
-      if (fds[i].fd < 0) {
+  for (rc = -1, max_fd = 0, i = 0; i < nfds; i++) {
+      if (fds[i].fd == SSH_INVALID_SOCKET) {
           continue;
       }
+#ifndef _WIN32
+      if (fds[i].fd >= FD_SETSIZE) {
+          rc = -1;
+          break;
+      }
+#endif
 
       if (fds[i].events & (POLLIN | POLLRDNORM)) {
           FD_SET (fds[i].fd, &readfds);
@@ -124,15 +140,16 @@ static int bsd_poll(ssh_pollfd_t *fds, nfds_t nfds, int timeout) {
       if (fds[i].events & (POLLPRI | POLLRDBAND)) {
           FD_SET (fds[i].fd, &exceptfds);
       }
-      if (fds[i].fd >= max_fd &&
+      if (fds[i].fd > max_fd &&
           (fds[i].events & (POLLIN | POLLOUT | POLLPRI |
                             POLLRDNORM | POLLRDBAND |
                             POLLWRNORM | POLLWRBAND))) {
           max_fd = fds[i].fd;
+          rc = 0;
       }
   }
 
-  if (max_fd == -1) {
+  if (max_fd == SSH_INVALID_SOCKET || rc == -1) {
       errno = EINVAL;
       return -1;
   }
@@ -162,14 +179,16 @@ static int bsd_poll(ssh_pollfd_t *fds, nfds_t nfds, int timeout) {
         if (FD_ISSET(fds[i].fd, &readfds)) {
             int save_errno = errno;
             char data[64] = {0};
+            int ret;
 
             /* support for POLLHUP */
+            ret = recv(fds[i].fd, data, 64, MSG_PEEK);
 #ifdef _WIN32
-            if ((recv(fds[i].fd, data, 64, MSG_PEEK) == -1) &&
+            if ((ret == -1) &&
                 (errno == WSAESHUTDOWN || errno == WSAECONNRESET ||
                  errno == WSAECONNABORTED || errno == WSAENETRESET)) {
 #else
-            if ((recv(fds[i].fd, data, 64, MSG_PEEK) == -1) &&
+            if ((ret == -1) &&
                 (errno == ESHUTDOWN || errno == ECONNRESET ||
                  errno == ECONNABORTED || errno == ENETRESET)) {
 #endif
@@ -201,10 +220,12 @@ static int bsd_poll(ssh_pollfd_t *fds, nfds_t nfds, int timeout) {
 void ssh_poll_init(void) {
     poll_fn wsa_poll = NULL;
 
+#ifdef _WIN32
     hlib = LoadLibrary(WS2_LIBRARY);
     if (hlib != NULL) {
         wsa_poll = (poll_fn) GetProcAddress(hlib, "WSAPoll");
     }
+#endif /* _WIN32 */
 
     if (wsa_poll == NULL) {
         win_poll = bsd_poll;
@@ -389,7 +410,7 @@ void ssh_poll_ctx_free(ssh_poll_ctx ctx) {
     used = ctx->polls_used;
     for (i = 0; i < used; ) {
       ssh_poll_handle p = ctx->pollptrs[i];
-      int fd = ctx->pollfds[i].fd;
+      socket_t fd = ctx->pollfds[i].fd;
 
       /* force poll object removal */
       if (p->cb(p, fd, POLLERR, p->cb_data) < 0) {
@@ -437,7 +458,7 @@ static int ssh_poll_ctx_resize(ssh_poll_ctx ctx, size_t new_size) {
  * @return              0 on success, < 0 on error
  */
 int ssh_poll_ctx_add(ssh_poll_ctx ctx, ssh_poll_handle p) {
-  int fd;
+  socket_t fd;
 
   if (p->ctx != NULL) {
     /* already attached to a context */
@@ -516,7 +537,7 @@ int ssh_poll_ctx_dopoll(ssh_poll_ctx ctx, int timeout) {
         i++;
       } else {
         ssh_poll_handle p = ctx->pollptrs[i];
-        int fd = ctx->pollfds[i].fd;
+        socket_t fd = ctx->pollfds[i].fd;
         int revents = ctx->pollfds[i].revents;
 
         if (p->cb(p, fd, revents, p->cb_data) < 0) {
