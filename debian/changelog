@@ -1,3 +1,9 @@
+libssh (0.4.5-1) UNRELEASED; urgency=low
+
+  * New upstream release
+
+ -- Laurent Bigonville <bigon@debian.org>  Sun, 18 Jul 2010 22:39:06 +0200
+
 libssh (0.4.4-1) unstable; urgency=low
 
   * New upstream release
