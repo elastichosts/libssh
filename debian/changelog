@@ -2,8 +2,9 @@ libssh (0.4.5-1) UNRELEASED; urgency=low
 
   * New upstream release
   * Bump Standards-Version to 3.9.0 (no further changes)
+  * Move doxygen to Build-Depends-Indep
 
- -- Laurent Bigonville <bigon@debian.org>  Sun, 18 Jul 2010 22:39:54 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Sun, 18 Jul 2010 22:41:23 +0200
 
 libssh (0.4.4-1) unstable; urgency=low
 
