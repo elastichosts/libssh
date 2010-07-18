@@ -79,7 +79,7 @@
 /* libssh version */
 #define LIBSSH_VERSION_MAJOR  0
 #define LIBSSH_VERSION_MINOR  4
-#define LIBSSH_VERSION_MICRO  4
+#define LIBSSH_VERSION_MICRO  5
 
 #define LIBSSH_VERSION_INT SSH_VERSION_INT(LIBSSH_VERSION_MAJOR, \
                                            LIBSSH_VERSION_MINOR, \
@@ -119,10 +119,16 @@ typedef struct ssh_string_struct* ssh_string;
 
 /* Socket type */
 #ifdef _WIN32
-#define socket_t SOCKET
-#else
+#ifndef socket_t
+typedef SOCKET socket_t;
+#endif /* socket_t */
+#else /* _WIN32 */
+#ifndef socket_t
 typedef int socket_t;
 #endif
+#endif /* _WIN32 */
+
+#define SSH_INVALID_SOCKET ((socket_t) -1)
 
 /* the offsets of methods */
 enum ssh_kex_types_e {
@@ -265,7 +271,8 @@ enum ssh_options_e {
   SSH_OPTIONS_CIPHERS_S_C,
   SSH_OPTIONS_COMPRESSION_C_S,
   SSH_OPTIONS_COMPRESSION_S_C,
-  SSH_OPTIONS_PROXYCOMMAND
+  SSH_OPTIONS_PROXYCOMMAND,
+  SSH_OPTIONS_BINDADDR
 };
 
 enum {
