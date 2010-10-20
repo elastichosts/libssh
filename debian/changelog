@@ -1,11 +1,11 @@
-libssh (0.4.5-2) UNRELEASED; urgency=low
+libssh (0.4.5-2) unstable; urgency=low
 
   * Add d/p/0001-socket.c-Fixed-setting-max_fd-which-breaks-ssh_selec.patch:
     Fix slow response in Remmina SSH (Closes: #599687, LP: #663777)
   * debian/control: Bump Standards-Version to 3.9.1 (no futher changes)
   * debian/copyright: Update copyright file to please lintian
 
- -- Laurent Bigonville <bigon@debian.org>  Wed, 20 Oct 2010 20:40:44 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 20 Oct 2010 20:45:48 +0200
 
 libssh (0.4.5-1) unstable; urgency=low
 
