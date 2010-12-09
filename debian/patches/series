@@ -1,1 +1,2 @@
 0001-socket.c-Fixed-setting-max_fd-which-breaks-ssh_selec.patch
+0002-socket-Fixed-uninitialized-fd-revents-member.patch

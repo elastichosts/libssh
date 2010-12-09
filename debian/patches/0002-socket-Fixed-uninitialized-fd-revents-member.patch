@@ -1,0 +1,21 @@
+From a9f3a2f1031ecb4e9d10a470ddf1581fbcbebce9 Mon Sep 17 00:00:00 2001
+From: Vic Lee <llyzs@163.com>
+Date: Fri, 22 Oct 2010 05:08:13 +0000
+Subject: socket: Fixed uninitialized fd->revents member.
+
+Signed-off-by: Vic Lee <llyzs@163.com>
+---
+diff --git a/libssh/socket.c b/libssh/socket.c
+index c8fd00f..817128c 100644
+--- a/libssh/socket.c
++++ b/libssh/socket.c
+@@ -492,6 +492,7 @@ int ssh_socket_poll(struct socket *s, int *writeable, int *except) {
+ 
+   fd->fd = s->fd;
+   fd->events = 0;
++  fd->revents = 0;
+ 
+   if (!s->data_to_read) {
+     fd->events |= POLLIN;
+--
+cgit v0.8.3.3
