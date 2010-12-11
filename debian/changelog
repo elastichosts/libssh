@@ -1,9 +1,9 @@
-libssh (0.4.5-2ubuntu1) UNRELEASED; urgency=low
+libssh (0.4.5-3) unstable; urgency=low
 
   * d/p/0002-socket-Fixed-uninitialized-fd-revents-member.patch:
     Fix uninitialized memory use (Closes: #606347)
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 09 Dec 2010 14:18:38 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 11 Dec 2010 01:33:45 +0100
 
 libssh (0.4.5-2) unstable; urgency=low
 
