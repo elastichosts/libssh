@@ -1,3 +1,9 @@
+libssh (0.4.6-1) UNRELEASED; urgency=low
+
+  * New upstream release
+
+ -- Laurent Bigonville <bigon@debian.org>  Mon, 13 Dec 2010 23:23:04 +0100
+
 libssh (0.4.5-3) unstable; urgency=low
 
   * d/p/0002-socket-Fixed-uninitialized-fd-revents-member.patch:
