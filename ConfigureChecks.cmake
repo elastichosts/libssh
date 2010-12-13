@@ -17,9 +17,25 @@ set(SYSCONFDIR ${SYSCONF_INSTALL_DIR})
 set(BINARYDIR ${CMAKE_BINARY_DIR})
 set(SOURCEDIR ${CMAKE_SOURCE_DIR})
 
-if(CMAKE_COMPILER_IS_GNUCC)
-check_c_compiler_flag("-fvisibility=hidden" WITH_VISIBILITY_HIDDEN)
-endif(CMAKE_COMPILER_IS_GNUCC)
+function(COMPILER_DUMPVERSION _OUTPUT_VERSION)
+    execute_process(
+        COMMAND
+            ${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1} -dumpversion
+        OUTPUT_VARIABLE _COMPILER_VERSION
+    )
+
+    string(REGEX REPLACE "([0-9])\\.([0-9])(\\.[0-9])?" "\\1\\2"
+        _COMPILER_VERSION ${_COMPILER_VERSION})
+
+    set(${_OUTPUT_VERSION} ${_COMPILER_VERSION} PARENT_SCOPE)
+endfunction()
+
+if(CMAKE_COMPILER_IS_GNUCC AND NOT MINGW)
+    compiler_dumpversion(GNUCC_VERSION)
+    if (NOT GNUCC_VERSION EQUAL 34)
+        check_c_compiler_flag("-fvisibility=hidden" WITH_VISIBILITY_HIDDEN)
+    endif (NOT GNUCC_VERSION EQUAL 34)
+endif(CMAKE_COMPILER_IS_GNUCC AND NOT MINGW)
 
 # HEADER FILES
 check_include_file(argp.h HAVE_ARGP_H)
@@ -39,18 +55,6 @@ if (WIN32)
     set(HAVE_GETHOSTBYNAME TRUE)
   endif (HAVE_WSPIAPI_H OR HAVE_WS2TCPIP_H)
 
-  check_function_exists(vsnprintf HAVE_VSNPRINTF)
-  if(NOT HAVE_VSNPRINTF)
-      check_function_exists(_vsnprintf_s HAVE__VSNPRINTF_S)
-      check_function_exists(_vsnprintf HAVE__VSNPRINTF)
-  endif(NOT HAVE_VSNPRINTF)
-  check_function_exists(snprintf HAVE_SNPRINTF)
-  if(NOT HAVE_SNPRINTF)
-      check_function_exists(_snprintf HAVE__SNPRINTF)
-      check_function_exists(_snprintf_s HAVE__SNPRINTF_S)
-  endif(NOT HAVE_SNPRINTF)
-  check_function_exists(strncpy HAVE_STRNCPY)
-
   set(HAVE_SELECT TRUE)
 endif (WIN32)
 
@@ -64,6 +68,17 @@ set(CMAKE_REQUIRED_INCLUDES ${OPENSSL_INCLUDE_DIRS})
 check_include_file(openssl/des.h HAVE_OPENSSL_DES_H)
 
 # FUNCTIONS
+
+check_function_exists(strncpy HAVE_STRNCPY)
+check_function_exists(vsnprintf HAVE_VSNPRINTF)
+check_function_exists(snprintf HAVE_SNPRINTF)
+
+if (WIN32)
+    check_function_exists(_vsnprintf_s HAVE__VSNPRINTF_S)
+    check_function_exists(_vsnprintf HAVE__VSNPRINTF)
+    check_function_exists(_snprintf HAVE__SNPRINTF)
+    check_function_exists(_snprintf_s HAVE__SNPRINTF_S)
+endif (WIN32)
 
 if (UNIX)
   # libsocket (Solaris)
@@ -120,4 +135,6 @@ if (WITH_DEBUG_CALLTRACE)
 endif (WITH_DEBUG_CALLTRACE)
 
 # ENDIAN
-test_big_endian(WORDS_BIGENDIAN)
+if (NOT WIN32)
+    test_big_endian(WORDS_BIGENDIAN)
+endif (NOT WIN32)

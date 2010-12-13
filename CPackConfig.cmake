@@ -13,7 +13,7 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/COPYING")
 ### versions
 set(CPACK_PACKAGE_VERSION_MAJOR "0")
 set(CPACK_PACKAGE_VERSION_MINOR "4")
-set(CPACK_PACKAGE_VERSION_PATCH "5")
+set(CPACK_PACKAGE_VERSION_PATCH "6")
 set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 
 
@@ -22,15 +22,20 @@ set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_SOURCE_IGNORE_FILES "~$;[.]swp$;/[.]svn/;/[.]git/;.gitignore;/build/;tags;cscope.*")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")
 
+if (WIN32)
+    set(CPACK_GENERATOR "ZIP")
 
-### nsis generator
-set(CPACK_GENERATOR "NSIS")
+    ### nsis generator
+    find_package(NSIS)
+    if (HAVE_NSIS)
+        set(CPACK_GENERATOR "${CPACK_GENERATOR};NSIS")
+        set(CPACK_NSIS_DISPLAY_NAME "The SSH Library")
+        set(CPACK_NSIS_COMPRESSOR "/SOLID zlib")
+        set(CPACK_NSIS_MENU_LINKS "http://www.libssh.org/" "libssh homepage")
+    endif (HAVE_NSIS)
+endif (WIN32)
 
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "libssh")
-
-set(CPACK_NSIS_DISPLAY_NAME "The SSH Library")
-set(CPACK_NSIS_COMPRESSOR "/SOLID zlib")
-set(CPACK_NSIS_MENU_LINKS "http://www.libssh.org/" "libssh homepage")
 
 set(CPACK_PACKAGE_FILE_NAME ${APPLICATION_NAME}-${CPACK_PACKAGE_VERSION})
 
