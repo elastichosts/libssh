@@ -1,2 +1,2 @@
 version=3
-http://www.libssh.org/files/libssh-(.*)\.tar.gz
+http://www.libssh.org/files/([\d.]+)/libssh-(.*)\.tar.gz
