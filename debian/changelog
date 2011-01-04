@@ -1,10 +1,10 @@
-libssh (0.4.7-1) UNRELEASED; urgency=low
+libssh (0.4.7-1) experimental; urgency=low
 
   * New upstream release
     - Drop all patches, applied upstream
   * debian/watch: Fix URL regex
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 31 Dec 2010 14:16:19 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Tue, 04 Jan 2011 21:24:34 +0100
 
 libssh (0.4.6-1) experimental; urgency=low
 
