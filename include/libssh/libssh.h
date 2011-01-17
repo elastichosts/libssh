@@ -40,7 +40,7 @@
       #endif
     #endif
   #else
-    #if __GNUC__ >= 4
+    #if __GNUC__ >= 4 && !defined(__OS2__)
       #define LIBSSH_API __attribute__((visibility("default")))
     #else
       #define LIBSSH_API
@@ -79,7 +79,7 @@
 /* libssh version */
 #define LIBSSH_VERSION_MAJOR  0
 #define LIBSSH_VERSION_MINOR  4
-#define LIBSSH_VERSION_MICRO  6
+#define LIBSSH_VERSION_MICRO  8
 
 #define LIBSSH_VERSION_INT SSH_VERSION_INT(LIBSSH_VERSION_MAJOR, \
                                            LIBSSH_VERSION_MINOR, \

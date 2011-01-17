@@ -8,7 +8,7 @@ set(APPLICATION_NAME ${PROJECT_NAME})
 
 set(APPLICATION_VERSION_MAJOR "0")
 set(APPLICATION_VERSION_MINOR "4")
-set(APPLICATION_VERSION_PATCH "7")
+set(APPLICATION_VERSION_PATCH "8")
 
 set(APPLICATION_VERSION "${APPLICATION_VERSION_MAJOR}.${APPLICATION_VERSION_MINOR}.${APPLICATION_VERSION_PATCH}")
 
@@ -30,6 +30,7 @@ set(CMAKE_MODULE_PATH
 # add definitions
 include(DefineCMakeDefaults)
 include(DefineCompilerFlags)
+include(DefinePlatformDefaults)
 include(DefineInstallationPaths)
 include(DefineOptions.cmake)
 include(CPackConfig.cmake)
