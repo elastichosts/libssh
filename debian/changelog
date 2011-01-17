@@ -1,8 +1,9 @@
 libssh (0.4.8-1) UNRELEASED; urgency=low
 
   * New upstream release
+  * Bump debhelper compatibility to 8
 
- -- Laurent Bigonville <bigon@debian.org>  Mon, 17 Jan 2011 19:27:37 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Mon, 17 Jan 2011 19:31:15 +0100
 
 libssh (0.4.7-1) experimental; urgency=low
 
