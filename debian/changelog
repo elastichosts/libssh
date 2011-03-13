@@ -1,8 +1,10 @@
 libssh (0.4.8-2) UNRELEASED; urgency=low
 
   * Upload to unstable
+  * debian/control: Add texlive-fonts-recommended to Build-Depends-Indep
+    (Closes: #608319)
 
- -- Laurent Bigonville <bigon@debian.org>  Sun, 13 Mar 2011 21:18:37 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Sun, 13 Mar 2011 21:32:10 +0100
 
 libssh (0.4.8-1) experimental; urgency=low
 

@@ -3,7 +3,7 @@ Section: libs
 Priority: optional
 Maintainer: Laurent Bigonville <bigon@debian.org>
 Build-Depends: cdbs, debhelper (>= 8), cmake (>= 2.6), libssl-dev, libz-dev
-Build-Depends-Indep: doxygen
+Build-Depends-Indep: doxygen, texlive-fonts-recommended
 Standards-Version: 3.9.1
 Vcs-Git: git://git.debian.org/git/collab-maint/libssh.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/libssh.git
