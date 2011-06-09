@@ -3,8 +3,10 @@ libssh (0.5.0-1) UNRELEASED; urgency=low
   * New upstream release
   * debian/control:
     - Bump Standards-Version to 3.9.2 (no further changes)
+  * debian/libssh-dev.install:
+    - Remove "static" from the static library name
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 09 Jun 2011 12:06:14 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 09 Jun 2011 12:17:19 +0200
 
 libssh (0.4.8-2) unstable; urgency=low
 
