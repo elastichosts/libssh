@@ -121,7 +121,8 @@ typedef struct ssh_poll_ctx_struct *ssh_poll_ctx;
 typedef struct ssh_poll_handle_struct *ssh_poll_handle;
 
 /**
- * @brief SSH poll callback.
+ * @brief SSH poll callback. This callback will be used when an event
+ *                      caught on the socket.
  *
  * @param p             Poll object this callback belongs to.
  * @param fd            The raw socket.
@@ -129,7 +130,7 @@ typedef struct ssh_poll_handle_struct *ssh_poll_handle;
  * @param userdata      Userdata to be passed to the callback function.
  *
  * @return              0 on success, < 0 if you removed the poll object from
- *                      it's poll context.
+ *                      its poll context.
  */
 typedef int (*ssh_poll_callback)(ssh_poll_handle p, socket_t fd, int revents,
     void *userdata);
@@ -144,13 +145,14 @@ void ssh_poll_set_events(ssh_poll_handle p, short events);
 void ssh_poll_add_events(ssh_poll_handle p, short events);
 void ssh_poll_remove_events(ssh_poll_handle p, short events);
 socket_t ssh_poll_get_fd(ssh_poll_handle p);
+void ssh_poll_set_fd(ssh_poll_handle p, socket_t fd);
 void ssh_poll_set_callback(ssh_poll_handle p, ssh_poll_callback cb, void *userdata);
 ssh_poll_ctx ssh_poll_ctx_new(size_t chunk_size);
 void ssh_poll_ctx_free(ssh_poll_ctx ctx);
 int ssh_poll_ctx_add(ssh_poll_ctx ctx, ssh_poll_handle p);
+int ssh_poll_ctx_add_socket (ssh_poll_ctx ctx, struct ssh_socket_struct *s);
 void ssh_poll_ctx_remove(ssh_poll_ctx ctx, ssh_poll_handle p);
 int ssh_poll_ctx_dopoll(ssh_poll_ctx ctx, int timeout);
-
-
+ssh_poll_ctx ssh_poll_get_default_ctx(ssh_session session);
 
 #endif /* POLL_H_ */

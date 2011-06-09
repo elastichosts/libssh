@@ -18,73 +18,109 @@ clients must be made or how a client should react.
  */
 
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <libssh/libssh.h>
 #include "examples_common.h"
 
-int authenticate_kbdint(ssh_session session){
-  int err=ssh_userauth_kbdint(session,NULL,NULL);
-  const char *name, *instruction, *prompt;
-  char *ptr;
-  char buffer[128];
-  int i,n;
-  char echo;
-  while (err==SSH_AUTH_INFO){
-    name=ssh_userauth_kbdint_getname(session);
-    instruction=ssh_userauth_kbdint_getinstruction(session);
-    n=ssh_userauth_kbdint_getnprompts(session);
-    if(strlen(name)>0)
-      printf("%s\n",name);
-    if(strlen(instruction)>0)
-      printf("%s\n",instruction);
-    for(i=0;i<n;++i){
-      prompt=ssh_userauth_kbdint_getprompt(session,i,&echo);
-      if(echo){
-        printf("%s",prompt);
-        fgets(buffer,sizeof(buffer),stdin);
-        buffer[sizeof(buffer)-1]=0;
-        if((ptr=strchr(buffer,'\n')))
-          *ptr=0;
-        if (ssh_userauth_kbdint_setanswer(session,i,buffer) < 0) {
-          return SSH_AUTH_ERROR;
+int authenticate_kbdint(ssh_session session, const char *password) {
+    int err;
+
+    err = ssh_userauth_kbdint(session, NULL, NULL);
+    while (err == SSH_AUTH_INFO) {
+        const char *instruction;
+        const char *name;
+        char buffer[128];
+        int i, n;
+
+        name = ssh_userauth_kbdint_getname(session);
+        instruction = ssh_userauth_kbdint_getinstruction(session);
+        n = ssh_userauth_kbdint_getnprompts(session);
+
+        if (name && strlen(name) > 0) {
+            printf("%s\n", name);
         }
-        memset(buffer,0,strlen(buffer));
-      } else {
-        ptr=getpass(prompt);
-        if (ssh_userauth_kbdint_setanswer(session,i,ptr) < 0) {
-          return SSH_AUTH_ERROR;
+
+        if (instruction && strlen(instruction) > 0) {
+            printf("%s\n", instruction);
         }
-      }
+
+        for (i = 0; i < n; i++) {
+            const char *answer;
+            const char *prompt;
+            char echo;
+
+            prompt = ssh_userauth_kbdint_getprompt(session, i, &echo);
+            if (prompt == NULL) {
+                break;
+            }
+
+            if (echo) {
+                char *p;
+
+                printf("%s", prompt);
+
+                if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+                    return SSH_AUTH_ERROR;
+                }
+
+                buffer[sizeof(buffer) - 1] = '\0';
+                if ((p = strchr(buffer, '\n'))) {
+                    *p = '\0';
+                }
+
+                if (ssh_userauth_kbdint_setanswer(session, i, buffer) < 0) {
+                    return SSH_AUTH_ERROR;
+                }
+
+                memset(buffer, 0, strlen(buffer));
+            } else {
+                if (password && strstr(prompt, "Password:")) {
+                    answer = password;
+                } else {
+                    buffer[0] = '\0';
+
+                    if (ssh_getpass(prompt, buffer, sizeof(buffer), 0, 0) < 0) {
+                        return SSH_AUTH_ERROR;
+                    }
+                    answer = buffer;
+                }
+                if (ssh_userauth_kbdint_setanswer(session, i, answer) < 0) {
+                    return SSH_AUTH_ERROR;
+                }
+            }
+        }
+        err=ssh_userauth_kbdint(session,NULL,NULL);
     }
-    err=ssh_userauth_kbdint(session,NULL,NULL);
-  }
-  return err;
+
+    return err;
+}
+
+static void error(ssh_session session){
+	fprintf(stderr,"Authentication failed: %s\n",ssh_get_error(session));
 }
 
 int authenticate_console(ssh_session session){
   int rc;
   int method;
-  char *password;
+  char password[128] = {0};
   char *banner;
 
   // Try to authenticate
   rc = ssh_userauth_none(session, NULL);
   if (rc == SSH_AUTH_ERROR) {
-    perror("Authentication failed.");
+    error(session);
     return rc;
   }
 
   method = ssh_auth_list(session);
   while (rc != SSH_AUTH_SUCCESS) {
-
     // Try to authenticate with public key first
     if (method & SSH_AUTH_METHOD_PUBLICKEY) {
       rc = ssh_userauth_autopubkey(session, NULL);
       if (rc == SSH_AUTH_ERROR) {
-        perror("Authentication failed.");
+      	error(session);
         return rc;
       } else if (rc == SSH_AUTH_SUCCESS) {
         break;
@@ -93,21 +129,24 @@ int authenticate_console(ssh_session session){
 
     // Try to authenticate with keyboard interactive";
     if (method & SSH_AUTH_METHOD_INTERACTIVE) {
-      rc = authenticate_kbdint(session);
+      rc = authenticate_kbdint(session, NULL);
       if (rc == SSH_AUTH_ERROR) {
-        perror("Authentication failed.");
+      	error(session);
         return rc;
       } else if (rc == SSH_AUTH_SUCCESS) {
         break;
       }
     }
 
-    password=getpass("Password: ");
+    if (ssh_getpass("Password: ", password, sizeof(password), 0, 0) < 0) {
+        return SSH_AUTH_ERROR;
+    }
+
     // Try to authenticate with password
     if (method & SSH_AUTH_METHOD_PASSWORD) {
       rc = ssh_userauth_password(session, NULL, password);
       if (rc == SSH_AUTH_ERROR) {
-        perror("Authentication failed.");
+      	error(session);
         return rc;
       } else if (rc == SSH_AUTH_SUCCESS) {
         break;
@@ -118,7 +157,7 @@ int authenticate_console(ssh_session session){
   banner = ssh_get_issue_banner(session);
   if (banner) {
     printf("%s\n",banner);
-    free(banner);
+    ssh_string_free_char(banner);
   }
 
   return rc;

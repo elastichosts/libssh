@@ -7,8 +7,8 @@ cmake_minimum_required(VERSION 2.6.0)
 set(APPLICATION_NAME ${PROJECT_NAME})
 
 set(APPLICATION_VERSION_MAJOR "0")
-set(APPLICATION_VERSION_MINOR "4")
-set(APPLICATION_VERSION_PATCH "8")
+set(APPLICATION_VERSION_MINOR "5")
+set(APPLICATION_VERSION_PATCH "0")
 
 set(APPLICATION_VERSION "${APPLICATION_VERSION_MAJOR}.${APPLICATION_VERSION_MINOR}.${APPLICATION_VERSION_PATCH}")
 
@@ -19,7 +19,7 @@ set(APPLICATION_VERSION "${APPLICATION_VERSION_MAJOR}.${APPLICATION_VERSION_MINO
 #     Increment AGE. Set REVISION to 0
 #   If the source code was changed, but there were no interface changes:
 #     Increment REVISION.
-set(LIBRARY_VERSION "4.1.4")
+set(LIBRARY_VERSION "4.2.0")
 set(LIBRARY_SOVERSION "4")
 
 # where to look first for cmake modules, before ${CMAKE_ROOT}/Modules/ is checked
@@ -29,8 +29,8 @@ set(CMAKE_MODULE_PATH
 
 # add definitions
 include(DefineCMakeDefaults)
-include(DefineCompilerFlags)
 include(DefinePlatformDefaults)
+include(DefineCompilerFlags)
 include(DefineInstallationPaths)
 include(DefineOptions.cmake)
 include(CPackConfig.cmake)
@@ -44,7 +44,9 @@ include(MacroAddPlugin)
 include(MacroCopyFile)
 
 # search for libraries
-find_package(ZLIB REQUIRED)
+if (WITH_LIBZ)
+    find_package(ZLIB REQUIRED)
+endif (WITH_LIBZ)
 
 if (WITH_GCRYPT)
   find_package(GCrypt REQUIRED)
@@ -61,6 +63,10 @@ else (WITH_GCRYPT)
   endif (NOT OPENSSL_FOUND)
 endif(WITH_GCRYPT)
 
+# Find out if we have threading available
+set(CMAKE_THREAD_PREFER_PTHREADS ON)
+find_package(Threads)
+
 # config.h checks
 include(ConfigureChecks.cmake)
 configure_file(config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
@@ -68,12 +74,44 @@ configure_file(config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 # check subdirectories
 add_subdirectory(doc)
 add_subdirectory(include)
-add_subdirectory(libssh)
+add_subdirectory(src)
 
-# build samples
-include_directories(${CMAKE_SOURCE_DIR}/include)
+# pkg-config file
+configure_file(libssh.pc.cmake ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc)
+install(
+  FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc
+  DESTINATION
+    ${LIB_INSTALL_DIR}/pkgconfig
+  COMPONENT
+    pkgconfig
+)
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  add_subdirectory(examples)
-endif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+add_subdirectory(examples)
+
+if (WITH_TESTING)
+  find_package(CMockery REQUIRED)
+  include(AddCMockeryTest)
+  add_subdirectory(tests)
+endif (WITH_TESTING)
+
+
+message(STATUS "********************************************")
+message(STATUS "********** ${PROJECT_NAME} build options : **********")
+
+message(STATUS "zlib support: ${WITH_LIBZ}")
+message(STATUS "libgcrypt support: ${WITH_GCRYPT}")
+message(STATUS "SSH-1 support: ${WITH_SSH1}")
+message(STATUS "SFTP support: ${WITH_SFTP}")
+message(STATUS "Server support : ${WITH_SERVER}")
+message(STATUS "Pcap debugging support : ${WITH_PCAP}")
+message(STATUS "Unit testing: ${WITH_TESTING}")
+message(STATUS "Client code Unit testing: ${WITH_CLIENT_TESTING}")
+if (WITH_INTERNAL_DOC)
+    message(STATUS "Internal documentation generation")
+else (WITH_INTERNAL_DOC)
+    message(STATUS "Public API documentation generation")
+endif (WITH_INTERNAL_DOC)
+message(STATUS "Benchmarks: ${WITH_BENCHMARKS}")
+message(STATUS "********************************************")
 
