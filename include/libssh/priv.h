@@ -46,9 +46,6 @@
 #  undef inline
 #  define inline __inline
 
-#  undef strdup
-#  define strdup _strdup
-
 #  define strcasecmp _stricmp
 #  define strncasecmp _strnicmp
 #  define strtoull _strtoui64
@@ -87,9 +84,6 @@
 #   endif /* HAVE__VSNPRINTF */
 #  endif /* HAVE__VSNPRINTF_S */
 
-#  ifndef HAVE_STRNCPY
-#  define strncpy(d, s, n) strncpy_s((d), (n), (s), _TRUNCATE)
-#  endif
 # endif /* _MSC_VER */
 
 #else /* _WIN32 */
@@ -102,18 +96,13 @@
 #include "libssh/libssh.h"
 #include "libssh/callbacks.h"
 #include "libssh/crypto.h"
+
 /* some constants */
 #define MAX_PACKET_LEN 262144
 #define ERROR_BUFFERLEN 1024
 #define CLIENTBANNER1 "SSH-1.5-libssh-" SSH_STRINGIFY(LIBSSH_VERSION)
 #define CLIENTBANNER2 "SSH-2.0-libssh-" SSH_STRINGIFY(LIBSSH_VERSION)
 #define KBDINT_MAX_PROMPT 256 /* more than openssh's :) */
-/* some types for public keys */
-enum public_key_types_e{
-	TYPE_DSS=1,
-	TYPE_RSA,
-	TYPE_RSA1
-};
 
 #ifdef __cplusplus
 extern "C" {
@@ -131,7 +120,7 @@ typedef struct kex_struct {
 
 struct error_struct {
 /* error handling */
-    unsigned int error_code;
+    int error_code;
     char error_buffer[ERROR_BUFFERLEN];
 };
 
@@ -145,33 +134,18 @@ struct ssh_keys_struct {
 
 struct ssh_message_struct;
 
-
 /* server data */
 
-struct ssh_bind_struct {
-  struct error_struct error;
 
-  ssh_callbacks callbacks; /* Callbacks to user functions */
-
-  /* options */
-  char *wanted_methods[10];
-  char *banner;
-  char *dsakey;
-  char *rsakey;
-  char *bindaddr;
-  socket_t bindfd;
-  unsigned int bindport;
-  unsigned int log_verbosity;
-
-  int blocking;
-  int toaccept;
-};
-
+SSH_PACKET_CALLBACK(ssh_packet_disconnect_callback);
+SSH_PACKET_CALLBACK(ssh_packet_ignore_callback);
 
 /* client.c */
 
 int ssh_send_banner(ssh_session session, int is_server);
-char *ssh_get_banner(ssh_session session);
+SSH_PACKET_CALLBACK(ssh_packet_dh_reply);
+SSH_PACKET_CALLBACK(ssh_packet_newkeys);
+SSH_PACKET_CALLBACK(ssh_packet_service_accept);
 
 /* config.c */
 int ssh_config_parse_file(ssh_session session, const char *filename);
@@ -186,25 +160,35 @@ uint32_t packet_decrypt_len(ssh_session session,char *crypted);
 int packet_decrypt(ssh_session session, void *packet,unsigned int len);
 unsigned char *packet_encrypt(ssh_session session,void *packet,unsigned int len);
  /* it returns the hmac buffer if exists*/
+struct ssh_poll_handle_struct;
+
 int packet_hmac_verify(ssh_session session,ssh_buffer buffer,unsigned char *mac);
 
+struct ssh_socket_struct;
+
+int ssh_packet_socket_callback(const void *data, size_t len, void *user);
+void ssh_packet_register_socket_callback(ssh_session session, struct ssh_socket_struct *s);
+void ssh_packet_set_callbacks(ssh_session session, ssh_packet_callbacks callbacks);
+void ssh_packet_set_default_callbacks(ssh_session session);
+void ssh_packet_process(ssh_session session, uint8_t type);
 /* connect.c */
-int ssh_regex_init(void);
-void ssh_regex_finalize(void);
-ssh_session ssh_session_new(void);
 socket_t ssh_connect_host(ssh_session session, const char *host,const char
         *bind_addr, int port, long timeout, long usec);
+socket_t ssh_connect_host_nonblocking(ssh_session session, const char *host,
+		const char *bind_addr, int port);
+void ssh_sock_set_nonblocking(socket_t sock);
+void ssh_sock_set_blocking(socket_t sock);
 
 /* in kex.c */
 extern const char *ssh_kex_nums[];
 int ssh_send_kex(ssh_session session, int server_kex);
 void ssh_list_kex(ssh_session session, KEX *kex);
 int set_kex(ssh_session session);
-int ssh_get_kex(ssh_session session, int server_kex);
 int verify_existing_algo(int algo, const char *name);
 char **space_tokenize(const char *chain);
 int ssh_get_kex1(ssh_session session);
 char *ssh_find_matching(const char *in_d, const char *what_d);
+
 
 /* in base64.c */
 ssh_buffer base64_to_bin(const char *source);
@@ -217,26 +201,11 @@ int decompress_buffer(ssh_session session,ssh_buffer buf, size_t maxlen);
 /* crc32.c */
 uint32_t ssh_crc32(const char *buf, uint32_t len);
 
-/* auth1.c */
-int ssh_userauth1_none(ssh_session session, const char *username);
-int ssh_userauth1_offer_pubkey(ssh_session session, const char *username,
-        int type, ssh_string pubkey);
-int ssh_userauth1_password(ssh_session session, const char *username,
-        const char *password);
-
-/* channels1.c */
-int channel_open_session1(ssh_channel channel);
-int channel_request_pty_size1(ssh_channel channel, const char *terminal,
-    int cols, int rows);
-int channel_change_pty_size1(ssh_channel channel, int cols, int rows);
-int channel_request_shell1(ssh_channel channel);
-int channel_request_exec1(ssh_channel channel, const char *cmd);
-int channel_handle1(ssh_session session, int type);
-int channel_write1(ssh_channel channel, const void *data, int len);
 
 /* match.c */
 int match_hostname(const char *host, const char *pattern, unsigned int len);
 
+int message_handle(ssh_session session, void *user, uint8_t type, ssh_buffer packet);
 /* log.c */
 
 /* misc.c */
@@ -278,6 +247,9 @@ int gettimeofday(struct timeval *__p, void *__t);
 
 int ssh_options_set_algo(ssh_session session, int algo, const char *list);
 int ssh_options_apply(ssh_session session);
+
+/* server.c */
+SSH_PACKET_CALLBACK(ssh_packet_kexdh_init);
 
 /** Free memory space */
 #define SAFE_FREE(x) do { if ((x) != NULL) {free(x); x=NULL;} } while(0)

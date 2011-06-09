@@ -29,6 +29,12 @@ http://www.libssh.org
 4* API Changes !
 -_-_-_-_-_-_-_-_-_
 
+Changes between 0.4 and 0.5
+---------------------------
+
+We use the ssh_ prefix as namespace for every function now. There is a legacy.h
+which could be used to get the old function names.
+
 Changes between 0.3 and 0.4
 ---------------------------
 
@@ -46,3 +52,20 @@ header file and it is documented. Example:
 
 ssh_options_set(session, SSH_OPTIONS_HOST, "localhost");
 
+5* Copyright policy
+-_-_-_-_-_-_-_-_-_-_
+
+The developers of libssh have a policy of asking for contributions to be made
+under the personal copyright of the contributor, instead of a corporate
+copyright.
+
+There are some reasons for the establishment of this policy:
+
+    * Individual copyrights make copyright registration in the US a simpler
+      process.
+    * If libssh is copyrighted by individuals rather than corporations,
+      decisions regarding enforcement and protection of copyright will, more
+      likely, be made in the interests of the project, and not in the interests
+      of any corporation’s shareholders.
+    * If we ever need to relicense a portion of the code contacting individuals
+      for permission to do so is much easier than contacting a company.

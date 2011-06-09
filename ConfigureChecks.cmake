@@ -1,5 +1,4 @@
 include(CheckIncludeFile)
-include(CheckIncludeFiles)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
 include(CheckLibraryExists)
@@ -18,9 +17,13 @@ set(BINARYDIR ${CMAKE_BINARY_DIR})
 set(SOURCEDIR ${CMAKE_SOURCE_DIR})
 
 function(COMPILER_DUMPVERSION _OUTPUT_VERSION)
+    # Remove whitespaces from the argument.
+    # This is needed for CC="ccache gcc" cmake ..
+    string(REPLACE " " "" _C_COMPILER_ARG "${CMAKE_C_COMPILER_ARG1}")
+
     execute_process(
         COMMAND
-            ${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1} -dumpversion
+            ${CMAKE_C_COMPILER} ${_C_COMPILER_ARG} -dumpversion
         OUTPUT_VARIABLE _COMPILER_VERSION
     )
 
@@ -40,16 +43,14 @@ endif(CMAKE_COMPILER_IS_GNUCC AND NOT MINGW AND NOT OS2)
 # HEADER FILES
 check_include_file(argp.h HAVE_ARGP_H)
 check_include_file(pty.h HAVE_PTY_H)
-check_include_file(terminos.h HAVE_TERMIOS_H)
+check_include_file(termios.h HAVE_TERMIOS_H)
+
 if (WIN32)
-  check_include_files("winsock2.h;ws2tcpip.h;wspiapi.h" HAVE_WSPIAPI_H)
+  check_include_file(wspiapi.h HAVE_WSPIAPI_H)
   if (NOT HAVE_WSPIAPI_H)
-    message(STATUS "WARNING: Without wspiapi.h (or dependencies), this build will only work on Windows XP and newer versions")
+    message(STATUS "WARNING: Without wspiapi.h, this build will only work on Windows XP and newer versions")
   endif (NOT HAVE_WSPIAPI_H)
-  check_include_files("winsock2.h;ws2tcpip.h" HAVE_WS2TCPIP_H)
-  if (NOT HAVE_WS2TCPIP_H)
-    message(ERROR "WARNING: Does not have ws2tcpip.h or winsock2.h")
-  endif (NOT HAVE_WS2TCPIP_H)
+  check_include_file(ws2tcpip.h HAVE_WS2TCPIP_H)
   if (HAVE_WSPIAPI_H OR HAVE_WS2TCPIP_H)
     set(HAVE_GETADDRINFO TRUE)
     set(HAVE_GETHOSTBYNAME TRUE)
@@ -67,6 +68,10 @@ check_include_file(openssl/blowfish.h HAVE_OPENSSL_BLOWFISH_H)
 set(CMAKE_REQUIRED_INCLUDES ${OPENSSL_INCLUDE_DIRS})
 check_include_file(openssl/des.h HAVE_OPENSSL_DES_H)
 
+if (CMAKE_HAVE_PTHREAD_H)
+  set(HAVE_PTHREAD_H 1)
+endif (CMAKE_HAVE_PTHREAD_H)
+
 # FUNCTIONS
 
 check_function_exists(strncpy HAVE_STRNCPY)
@@ -81,33 +86,39 @@ if (WIN32)
 endif (WIN32)
 
 if (UNIX)
-  # libsocket (Solaris)
-  check_library_exists(socket getaddrinfo "" HAVE_LIBSOCKET)
-  if (HAVE_LIBSOCKET)
-    set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} socket)
-  endif (HAVE_LIBSOCKET)
-  # libnsl (Solaris)
-  check_library_exists(nsl gethostbyname "" HAVE_LIBNSL)
-  if (HAVE_LIBNSL)
-    set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} nsl)
-  endif (HAVE_LIBNSL)
-  # libresolv
-  check_library_exists(resolv hstrerror "" HAVE_LIBRESOLV)
-  if (HAVE_LIBRESOLV)
-    set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} resolv)
-  endif (HAVE_LIBRESOLV)
-  check_library_exists(rt nanosleep "" HAVE_LIBRT)
-  # librt
-  if (HAVE_LIBRT)
-    set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} rt)
-  endif (HAVE_LIBRT)
+    if (NOT LINUX)
+        # libsocket (Solaris)
+        check_library_exists(socket getaddrinfo "" HAVE_LIBSOCKET)
+        if (HAVE_LIBSOCKET)
+          set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} socket)
+        endif (HAVE_LIBSOCKET)
 
-  check_function_exists(getaddrinfo HAVE_GETADDRINFO)
-  check_function_exists(gethostbyname HAVE_GETHOSTBYNAME)
-  check_function_exists(poll HAVE_POLL)
-  check_function_exists(select HAVE_SELECT)
-  check_function_exists(cfmakeraw HAVE_CFMAKERAW)
-  check_function_exists(regcomp HAVE_REGCOMP)
+        # libresolv
+        check_library_exists(resolv hstrerror "" HAVE_LIBRESOLV)
+        if (HAVE_LIBRESOLV)
+          set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} resolv)
+        endif (HAVE_LIBRESOLV)
+
+        # libnsl/inet_pton (Solaris)
+        check_library_exists(nsl inet_pton "" HAVE_LIBNSL)
+        if (HAVE_LIBNSL)
+            set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} nsl)
+        endif (HAVE_LIBNSL)
+
+        # librt
+        check_library_exists(rt nanosleep "" HAVE_LIBRT)
+    endif (NOT LINUX)
+
+    check_library_exists(rt clock_gettime "" HAVE_CLOCK_GETTIME)
+    if (HAVE_LIBRT OR HAVE_CLOCK_GETTIME)
+        set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} rt)
+    endif (HAVE_LIBRT OR HAVE_CLOCK_GETTIME)
+
+    check_function_exists(getaddrinfo HAVE_GETADDRINFO)
+    check_function_exists(poll HAVE_POLL)
+    check_function_exists(select HAVE_SELECT)
+    check_function_exists(cfmakeraw HAVE_CFMAKERAW)
+    check_function_exists(regcomp HAVE_REGCOMP)
 endif (UNIX)
 
 set(LIBSSH_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES} CACHE INTERNAL "libssh required system libraries")
@@ -121,9 +132,15 @@ if (GCRYPT_FOUND)
   set(HAVE_LIBGCRYPT 1)
 endif (GCRYPT_FOUND)
 
-if (Z_LIBRARY)
+if (ZLIB_LIBRARY)
   set(HAVE_LIBZ 1)
-endif (Z_LIBRARY)
+endif (ZLIB_LIBRARY)
+
+if (CMAKE_HAVE_THREADS_LIBRARY)
+    if (CMAKE_USE_PTHREADS_INIT)
+        set(HAVE_PTHREAD 1)
+    endif (CMAKE_USE_PTHREADS_INIT)
+endif (CMAKE_HAVE_THREADS_LIBRARY)
 
 # OPTIONS
 if (WITH_DEBUG_CRYPTO)

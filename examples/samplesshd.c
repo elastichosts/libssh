@@ -23,7 +23,7 @@ clients must be made or how a client should react.
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <unistd.h>
+
 #ifndef KEYS_FOLDER
 #ifdef _WIN32
 #define KEYS_FOLDER
@@ -31,6 +31,32 @@ clients must be made or how a client should react.
 #define KEYS_FOLDER "/etc/ssh/"
 #endif
 #endif
+
+#ifdef WITH_PCAP
+const char *pcap_file="debug.server.pcap";
+ssh_pcap_file pcap;
+
+void set_pcap(ssh_session session);
+void set_pcap(ssh_session session){
+	if(!pcap_file)
+		return;
+	pcap=ssh_pcap_file_new();
+	if(ssh_pcap_file_open(pcap,pcap_file) == SSH_ERROR){
+		printf("Error opening pcap file\n");
+		ssh_pcap_file_free(pcap);
+		pcap=NULL;
+		return;
+	}
+	ssh_set_pcap_file(session,pcap);
+}
+
+void cleanup_pcap(void);
+void cleanup_pcap(){
+	ssh_pcap_file_free(pcap);
+	pcap=NULL;
+}
+#endif
+
 
 static int auth_password(char *user, char *password){
     if(strcmp(user,"aris"))
@@ -147,7 +173,7 @@ int main(int argc, char **argv){
     ssh_bind sshbind;
     ssh_message message;
     ssh_channel chan=0;
-    ssh_buffer buf;
+    char buf[2048];
     int auth=0;
     int sftp=0;
     int i;
@@ -165,7 +191,14 @@ int main(int argc, char **argv){
      * be reflected in arguments.
      */
     argp_parse (&argp, argc, argv, 0, 0, sshbind);
+#else
+    (void) argc;
+    (void) argv;
 #endif
+#ifdef WITH_PCAP
+    set_pcap(session);
+#endif
+
     if(ssh_bind_listen(sshbind)<0){
         printf("Error listening to socket: %s\n",ssh_get_error(sshbind));
         return 1;
@@ -175,8 +208,8 @@ int main(int argc, char **argv){
       printf("error accepting a connection : %s\n",ssh_get_error(sshbind));
       return 1;
     }
-    if(ssh_accept(session)){
-        printf("ssh_accept: %s\n",ssh_get_error(session));
+    if (ssh_handle_key_exchange(session)) {
+        printf("ssh_handle_key_exchange: %s\n", ssh_get_error(session));
         return 1;
     }
     do {
@@ -254,15 +287,21 @@ int main(int argc, char **argv){
         return 1;
     }
     printf("it works !\n");
-    buf=buffer_new();
     do{
-        i=channel_read_buffer(chan,buf,0,0);
-        if(i>0)
-            write(1,buffer_get(buf),buffer_get_len(buf));
+        i=ssh_channel_read(chan,buf, 2048, 0);
+        if(i>0) {
+            ssh_channel_write(chan, buf, i);
+            if (write(1,buf,i) < 0) {
+                printf("error writing to buffer\n");
+                return 1;
+            }
+        }
     } while (i>0);
-    buffer_free(buf);
     ssh_disconnect(session);
     ssh_bind_free(sshbind);
+#ifdef WITH_PCAP
+    cleanup_pcap();
+#endif
     ssh_finalize();
     return 0;
 }

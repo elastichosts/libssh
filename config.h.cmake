@@ -35,6 +35,10 @@
 /* Define to 1 if you have the <openssl/des.h> header file. */
 #cmakedefine HAVE_OPENSSL_DES_H 1
 
+/* Define to 1 if you have the <pthread.h> header file. */
+#cmakedefine HAVE_PTHREAD_H 1
+
+
 /*************************** FUNCTIONS ***************************/
 
 /* Define to 1 if you have the `snprintf' function. */
@@ -55,16 +59,6 @@
 /* Define to 1 if you have the `_vsnprintf_s' function. */
 #cmakedefine HAVE__VSNPRINTF_S 1
 
-/* Define to 1 if you have the `snprintf' function. */
-#cmakedefine HAVE_SNPRINTF 1
-
-/* Define to 1 if you have the `_snprintf' function. */
-#cmakedefine HAVE__SNPRINTF 1
-
-/* Define to 1 if you have the `_snprintf_s' function. */
-#cmakedefine HAVE__SNPRINTF_S 1
-
-
 /* Define to 1 if you have the `strncpy' function. */
 #cmakedefine HAVE_STRNCPY 1
 
@@ -74,9 +68,6 @@
 /* Define to 1 if you have the `getaddrinfo' function. */
 #cmakedefine HAVE_GETADDRINFO 1
 
-/* Define to 1 if you have the `gethostbyname' function. */
-#cmakedefine HAVE_GETHOSTBYNAME 1
-
 /* Define to 1 if you have the `poll' function. */
 #cmakedefine HAVE_POLL 1
 
@@ -85,6 +76,9 @@
 
 /* Define to 1 if you have the `regcomp' function. */
 #cmakedefine HAVE_REGCOMP 1
+
+/* Define to 1 if you have the `clock_gettime' function. */
+#cmakedefine HAVE_CLOCK_GETTIME 1
 
 /*************************** LIBRARIES ***************************/
 
@@ -96,6 +90,10 @@
 
 /* Define to 1 if you have the `z' library (-lz). */
 #cmakedefine HAVE_LIBZ 1
+
+/* Define to 1 if you have the `pthread' library (-lpthread). */
+#cmakedefine HAVE_PTHREAD 1
+
 
 /**************************** OPTIONS ****************************/
 

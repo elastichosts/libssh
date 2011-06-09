@@ -30,6 +30,9 @@ int ssh_file_readaccess_ok(const char *file);
 
 char *ssh_path_expand_tilde(const char *d);
 char *ssh_path_expand_escape(ssh_session session, const char *s);
+int ssh_analyze_banner(ssh_session session, int server, int *ssh1, int *ssh2);
+int ssh_is_ipaddr_v4(const char *str);
+int ssh_is_ipaddr(const char *str);
 
 /* macro for byte ordering */
 uint64_t ntohll(uint64_t);
@@ -47,12 +50,18 @@ struct ssh_iterator {
   const void *data;
 };
 
+struct ssh_timestamp {
+  long seconds;
+  long useconds;
+};
+
 struct ssh_list *ssh_list_new(void);
 void ssh_list_free(struct ssh_list *list);
 struct ssh_iterator *ssh_list_get_iterator(const struct ssh_list *list);
 int ssh_list_append(struct ssh_list *list, const void *data);
 int ssh_list_prepend(struct ssh_list *list, const void *data);
 void ssh_list_remove(struct ssh_list *list, struct ssh_iterator *iterator);
+char *ssh_lowercase(const char* str);
 char *ssh_hostport(const char *host, int port);
 
 const void *_ssh_list_pop_head(struct ssh_list *list);
@@ -67,5 +76,9 @@ const void *_ssh_list_pop_head(struct ssh_list *list);
  */
 #define ssh_list_pop_head(type, ssh_list)\
   ((type)_ssh_list_pop_head(ssh_list))
+
+void ssh_timestamp_init(struct ssh_timestamp *ts);
+int ssh_timeout_elapsed(struct ssh_timestamp *ts, int timeout);
+int ssh_timeout_update(struct ssh_timestamp *ts, int timeout);
 
 #endif /* MISC_H_ */
