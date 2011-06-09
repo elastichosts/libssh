@@ -6,9 +6,10 @@ libssh (0.5.0-1) UNRELEASED; urgency=low
     - Fix short description to please lintian
   * debian/libssh-dev.install:
     - Remove "static" from the static library name
+    - Install pkg-config file
   * debian/libssh-4.symbols: Add new symbols to .symbols file
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 09 Jun 2011 13:41:33 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 09 Jun 2011 13:45:27 +0200
 
 libssh (0.4.8-2) unstable; urgency=low
 
