@@ -8,8 +8,10 @@ libssh (0.5.0-1) UNRELEASED; urgency=low
     - Remove "static" from the static library name
     - Install pkg-config file
   * debian/libssh-4.symbols: Add new symbols to .symbols file
+  * debian/patch/0001-rename-threads-static.patch:
+    Rename libssh_threads_static.so to libssh_threads.so
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 09 Jun 2011 13:45:27 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 10 Jun 2011 22:12:53 +0200
 
 libssh (0.4.8-2) unstable; urgency=low
 
