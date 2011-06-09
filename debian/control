@@ -12,7 +12,7 @@ Homepage: http://www.libssh.org/
 Package: libssh-4
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: A tiny C SSH library
+Description: tiny C SSH library
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
  is made by the programmer. With libssh, you can remotely execute programs,
@@ -26,7 +26,7 @@ Depends: libssh-4 (= ${binary:Version}), ${misc:Depends}, libssl-dev, zlib1g-dev
 Suggests: libssh-doc
 Conflicts: libssh-2-dev
 Replaces: libssh-2-dev
-Description: A tiny C SSH library. Development files
+Description: tiny C SSH library. Development files
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
  is made by the programmer. With libssh, you can remotely execute programs,
@@ -40,7 +40,7 @@ Priority: extra
 Section: debug
 Architecture: any
 Depends: libssh-4 (= ${binary:Version}), ${misc:Depends}
-Description: A tiny C SSH library. Debug symbols
+Description: tiny C SSH library. Debug symbols
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
  is made by the programmer. With libssh, you can remotely execute programs,
@@ -56,7 +56,7 @@ Suggests: doc-base
 Depends: ${misc:Depends}
 Conflicts: libssh-2-doc
 Replaces: libssh-2-doc
-Description: A tiny C SSH library. Documentation files
+Description: tiny C SSH library. Documentation files
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
  is made by the programmer. With libssh, you can remotely execute programs,
