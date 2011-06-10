@@ -1,4 +1,4 @@
-libssh (0.5.0-1) UNRELEASED; urgency=low
+libssh (0.5.0-1) unstable; urgency=low
 
   * New upstream release
   * debian/control:
@@ -15,7 +15,7 @@ libssh (0.5.0-1) UNRELEASED; urgency=low
   * debian/patches/0002-Check-for-NULL-pointers-in-string-c.patch:
     Check if string is NULL.
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 10 Jun 2011 22:43:15 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 10 Jun 2011 22:47:54 +0200
 
 libssh (0.4.8-2) unstable; urgency=low
 
