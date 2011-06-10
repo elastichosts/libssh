@@ -282,3 +282,5 @@ libssh.so.4 libssh-4 #MINVER#
  string_len@Base 0.3.4
  string_new@Base 0.3.4
  string_to_char@Base 0.3.4
+libssh_threads.so.4 libssh-4 #MINVER#
+ ssh_threads_get_pthread@Base 0.5.0

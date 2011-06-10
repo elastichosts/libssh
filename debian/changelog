@@ -10,8 +10,10 @@ libssh (0.5.0-1) UNRELEASED; urgency=low
   * debian/libssh-4.symbols: Add new symbols to .symbols file
   * debian/patch/0001-rename-threads-static.patch:
     Rename libssh_threads_static.so to libssh_threads.so
+  * debian/libssh-4.install, debian/libssh-dev.install, debian/libssh-4.symbols,
+    debian/libssh-4.lintian-overrides: Install libssh_threads library
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 10 Jun 2011 22:12:53 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 10 Jun 2011 22:34:49 +0200
 
 libssh (0.4.8-2) unstable; urgency=low
 
