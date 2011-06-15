@@ -5,18 +5,27 @@ Subject: Check for NULL pointers in string.c
 
 (cherry picked from commit 4230509e805f546091ca2e4f8aa13c22f6efc7a8)
 ---
-diff --git a/src/string.c b/src/string.c
-index 33920e6..1959ab6 100644
 --- a/src/string.c
 +++ b/src/string.c
-@@ -92,7 +92,13 @@ int ssh_string_fill(struct ssh_string_struct *s, const void *data, size_t len) {
+@@ -21,6 +21,7 @@
+  * MA 02111-1307, USA.
+  */
+ 
++#include <errno.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -91,8 +92,15 @@
+  * @note The nul byte is not copied nor counted in the ouput string.
   */
  struct ssh_string_struct *ssh_string_from_char(const char *what) {
-   struct ssh_string_struct *ptr = NULL;
+-  struct ssh_string_struct *ptr = NULL;
 -  size_t len = strlen(what);
++  struct ssh_string_struct *ptr;
 +  size_t len;
-+  
++
 +  if(what == NULL) {
++      errno = EINVAL;
 +      return NULL;
 +  }
 +
@@ -24,7 +33,7 @@ index 33920e6..1959ab6 100644
  
    ptr = malloc(4 + len);
    if (ptr == NULL) {
-@@ -133,7 +139,7 @@ size_t ssh_string_len(struct ssh_string_struct *s) {
+@@ -133,7 +141,7 @@
  char *ssh_string_to_char(struct ssh_string_struct *s) {
  	size_t len;
  	char *new;
@@ -33,7 +42,7 @@ index 33920e6..1959ab6 100644
  		return NULL;
    len = ntohl(s->size) + 1;
    new = malloc(len);
-@@ -164,7 +170,12 @@ void ssh_string_free_char(char *s) {
+@@ -164,7 +172,12 @@
   * @return              Newly allocated copy of the string, NULL on error.
   */
  struct ssh_string_struct *ssh_string_copy(struct ssh_string_struct *s) {
@@ -47,53 +56,3 @@ index 33920e6..1959ab6 100644
  
    if (new == NULL) {
      return NULL;
---
-cgit v0.9
-From cfa74c1dc63851a29b50bbaa1b58f878a55107b9 Mon Sep 17 00:00:00 2001
-From: Andreas Schneider <asn@cryptomilk.org>
-Date: Mon, 06 Jun 2011 16:50:39 +0000
-Subject: string: Added missing errno.
-
-(cherry picked from commit d536cc4f399eabb0ca3dec5bf8b2bf2dc168bf60)
----
-diff --git a/src/string.c b/src/string.c
-index 1959ab6..6268d00 100644
---- a/src/string.c
-+++ b/src/string.c
-@@ -91,10 +91,11 @@ int ssh_string_fill(struct ssh_string_struct *s, const void *data, size_t len) {
-  * @note The nul byte is not copied nor counted in the ouput string.
-  */
- struct ssh_string_struct *ssh_string_from_char(const char *what) {
--  struct ssh_string_struct *ptr = NULL;
-+  struct ssh_string_struct *ptr;
-   size_t len;
--  
-+
-   if(what == NULL) {
-+      errno = EINVAL;
-       return NULL;
-   }
- 
---
-cgit v0.9
-From 4a18df8574e97f13a6f96d6704180a6f6010ff44 Mon Sep 17 00:00:00 2001
-From: Andreas Schneider <asn@cryptomilk.org>
-Date: Mon, 06 Jun 2011 16:56:15 +0000
-Subject: string: Added missing include.
-
-(cherry picked from commit 3fa801a9295e1adbfadcecfd193f3a84d307e64a)
----
-diff --git a/src/string.c b/src/string.c
-index 6268d00..6be7c2a 100644
---- a/src/string.c
-+++ b/src/string.c
-@@ -21,6 +21,7 @@
-  * MA 02111-1307, USA.
-  */
- 
-+#include <errno.h>
- #include <stdlib.h>
- #include <string.h>
- 
---
-cgit v0.9
