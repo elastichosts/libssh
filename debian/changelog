@@ -2,8 +2,9 @@ libssh (0.5.0-2) UNRELEASED; urgency=low
 
   * debian/patches/0002-Check-for-NULL-pointers-in-string-c.patch:
     Consolidate patch (Should fix previous REJECT)
+  * Support multiarch spec
 
- -- Laurent Bigonville <bigon@debian.org>  Wed, 15 Jun 2011 14:41:12 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 15 Jun 2011 14:44:39 +0200
 
 libssh (0.5.0-1) unstable; urgency=low
 
