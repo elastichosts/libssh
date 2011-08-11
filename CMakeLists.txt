@@ -8,7 +8,7 @@ set(APPLICATION_NAME ${PROJECT_NAME})
 
 set(APPLICATION_VERSION_MAJOR "0")
 set(APPLICATION_VERSION_MINOR "5")
-set(APPLICATION_VERSION_PATCH "0")
+set(APPLICATION_VERSION_PATCH "1")
 
 set(APPLICATION_VERSION "${APPLICATION_VERSION_MAJOR}.${APPLICATION_VERSION_MINOR}.${APPLICATION_VERSION_PATCH}")
 
@@ -19,7 +19,7 @@ set(APPLICATION_VERSION "${APPLICATION_VERSION_MAJOR}.${APPLICATION_VERSION_MINO
 #     Increment AGE. Set REVISION to 0
 #   If the source code was changed, but there were no interface changes:
 #     Increment REVISION.
-set(LIBRARY_VERSION "4.2.0")
+set(LIBRARY_VERSION "4.2.1")
 set(LIBRARY_SOVERSION "4")
 
 # where to look first for cmake modules, before ${CMAKE_ROOT}/Modules/ is checked
@@ -78,9 +78,11 @@ add_subdirectory(src)
 
 # pkg-config file
 configure_file(libssh.pc.cmake ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc)
+configure_file(libssh_threads.pc.cmake ${CMAKE_CURRENT_BINARY_DIR}/libssh_threads.pc)
 install(
   FILES
     ${CMAKE_CURRENT_BINARY_DIR}/libssh.pc
+    ${CMAKE_CURRENT_BINARY_DIR}/libssh_threads.pc
   DESTINATION
     ${LIB_INSTALL_DIR}/pkgconfig
   COMPONENT
