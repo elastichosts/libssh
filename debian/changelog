@@ -8,8 +8,10 @@ libssh (0.5.1-1) UNRELEASED; urgency=low
   * debian/patches/0001-disable-latex-documentation.patch: Disable LaTeX
     documentation generation (Closes: #622108)
   * debian/control: Drop texlive-fonts-recommended build-dependency
+  * debian/patches/0002-fix-html-doc-generation.patch: Fix HTML doc generation
+    (LP: #821437)
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 18 Aug 2011 23:43:18 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 19 Aug 2011 00:20:02 +0200
 
 libssh (0.5.0-2) unstable; urgency=low
 
