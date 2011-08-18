@@ -1,4 +1,4 @@
-libssh (0.5.1-1) UNRELEASED; urgency=low
+libssh (0.5.1-1) unstable; urgency=low
 
   * New upstream release (Closes: #637445)
   * debian/patches/0001-rename-threads-static.patch,
@@ -12,7 +12,7 @@ libssh (0.5.1-1) UNRELEASED; urgency=low
     (LP: #821437)
   * debian/libssh-doc.doc-base: Refine Title and Files glob
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 19 Aug 2011 00:37:47 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 19 Aug 2011 00:46:48 +0200
 
 libssh (0.5.0-2) unstable; urgency=low
 
