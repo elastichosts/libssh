@@ -3,8 +3,10 @@ libssh (0.5.1-1) UNRELEASED; urgency=low
   * New upstream release (Closes: #637445)
   * debian/patches/0001-rename-threads-static.patch,
     debian/patches/0002-Check-for-NULL-pointers-in-string-c.patch: Dropped
+  * debian/rules:
+    - Adjust rule that build documentation
 
- -- Laurent Bigonville <bigon@debian.org>  Thu, 11 Aug 2011 17:18:52 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 18 Aug 2011 23:15:07 +0200
 
 libssh (0.5.0-2) unstable; urgency=low
 

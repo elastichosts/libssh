@@ -13,5 +13,5 @@ DEB_DBG_PACKAGE_libssh-4 = libssh-dbg
 include /usr/share/cdbs/1/rules/utils.mk
 common-binary-post-install-arch:: list-missing
 
-common-build-indep::
-	cd obj-*/; make doc
+build/libssh-doc::
+	$(MAKE) -C $(DEB_BUILDDIR) doc
