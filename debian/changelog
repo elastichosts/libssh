@@ -1,8 +1,10 @@
-libssh (0.5.1-2) UNRELEASED; urgency=low
+libssh (0.5.2-1) UNRELEASED; urgency=low
 
+  * New upstream release
+    - Fix bug with ssh_channel_write (Closes: #631950)
   * debian/watch: Use new tarball location
 
- -- Laurent Bigonville <bigon@debian.org>  Mon, 19 Sep 2011 11:18:38 +0200
+ -- Laurent Bigonville <bigon@debian.org>  Mon, 19 Sep 2011 11:19:39 +0200
 
 libssh (0.5.1-1) unstable; urgency=low
 
