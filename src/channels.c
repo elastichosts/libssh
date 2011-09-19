@@ -22,6 +22,7 @@
  * MA 02111-1307, USA.
  */
 
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -45,7 +46,7 @@
 #include "libssh/server.h"
 #endif
 
-#define WINDOWBASE 128000
+#define WINDOWBASE 1280000
 #define WINDOWLIMIT (WINDOWBASE/2)
 
 /*
@@ -104,15 +105,9 @@ ssh_channel ssh_channel_new(ssh_session session) {
   channel->exit_status = -1;
 
   if(session->channels == NULL) {
-    session->channels = channel;
-    channel->next = channel->prev = channel;
-    return channel;
+    session->channels = ssh_list_new();
   }
-  channel->next = session->channels;
-  channel->prev = session->channels->prev;
-  channel->next->prev = channel;
-  channel->prev->next = channel;
-
+  ssh_list_prepend(session->channels, channel);
   return channel;
 }
 
@@ -292,11 +287,14 @@ static int channel_open(ssh_channel channel, const char *type_c, int window,
   /* Todo: fix this into a correct loop */
   /* wait until channel is opened by server */
   while(channel->state == SSH_CHANNEL_STATE_NOT_OPEN){
-    ssh_handle_packets(session, -2);
-    if (session->session_state == SSH_SESSION_STATE_ERROR) {
-        err = SSH_ERROR;
-        break;
-    }
+      err = ssh_handle_packets(session, -2);
+      if (err != SSH_OK) {
+          break;
+      }
+      if (session->session_state == SSH_SESSION_STATE_ERROR) {
+          err = SSH_ERROR;
+          break;
+      }
   }
   if(channel->state == SSH_CHANNEL_STATE_OPEN)
     err=SSH_OK;
@@ -306,23 +304,20 @@ static int channel_open(ssh_channel channel, const char *type_c, int window,
 
 /* return channel with corresponding local id, or NULL if not found */
 ssh_channel ssh_channel_from_local(ssh_session session, uint32_t id) {
-    ssh_channel initchan = session->channels;
-    ssh_channel channel = initchan;
+  struct ssh_iterator *it;
+  ssh_channel channel;
 
-    for (;;) {
-        if (channel == NULL) {
-            return NULL;
-        }
-        if (channel->local_channel == id) {
-            return channel;
-        }
-        if (channel->next == initchan) {
-            return NULL;
-        }
-        channel = channel->next;
+  for (it = ssh_list_get_iterator(session->channels); it != NULL ; it=it->next) {
+    channel = ssh_iterator_value(ssh_channel, it);
+    if (channel == NULL) {
+      continue;
     }
+    if (channel->local_channel == id) {
+      return channel;
+    }
+  }
 
-    return NULL;
+  return NULL;
 }
 
 /**
@@ -336,6 +331,13 @@ static int grow_window(ssh_session session, ssh_channel channel, int minimumsize
   uint32_t new_window = minimumsize > WINDOWBASE ? minimumsize : WINDOWBASE;
 
   enter_function();
+#ifdef WITH_SSH1
+  if (session->version == 1){
+      channel->remote_window = new_window;
+      leave_function();
+      return SSH_OK;
+  }
+#endif
   if(new_window <= channel->local_window){
     ssh_log(session,SSH_LOG_PROTOCOL,
         "growing window (channel %d:%d) to %d bytes : not needed (%d bytes)",
@@ -396,7 +398,7 @@ static ssh_channel channel_from_msg(ssh_session session, ssh_buffer packet) {
 #ifdef WITH_SSH1
   /* With SSH1, the channel is always the first one */
   if(session->version==1)
-    return session->channels;
+    return ssh_get_channel1(session);
 #endif
   if (buffer_get_u32(packet, &chan) != sizeof(uint32_t)) {
     ssh_set_error(session, SSH_FATAL,
@@ -992,31 +994,24 @@ error:
  * @warning Any data unread on this channel will be lost.
  */
 void ssh_channel_free(ssh_channel channel) {
-  ssh_session session = channel->session;
-  enter_function();
+  ssh_session session;
+  struct ssh_iterator *it;
 
   if (channel == NULL) {
-    leave_function();
     return;
   }
+
+  session = channel->session;
+  enter_function();
 
   if (session->alive && channel->state == SSH_CHANNEL_STATE_OPEN) {
     ssh_channel_close(channel);
   }
 
-  /* handle the "my channel is first on session list" case */
-  if (session->channels == channel) {
-    session->channels = channel->next;
+  it = ssh_list_find(session->channels, channel);
+  if(it != NULL){
+    ssh_list_remove(session->channels, it);
   }
-
-  /* handle the "my channel is the only on session list" case */
-  if (channel->next == channel) {
-    session->channels = NULL;
-  } else {
-    channel->prev->next = channel->next;
-    channel->next->prev = channel->prev;
-  }
-
   ssh_buffer_free(channel->stdout_buffer);
   ssh_buffer_free(channel->stderr_buffer);
 
@@ -1126,9 +1121,11 @@ error:
 int channel_write_common(ssh_channel channel, const void *data,
     uint32_t len, int is_stderr) {
   ssh_session session;
-  int origlen = len;
+  uint32_t origlen = len;
   size_t effectivelen;
   size_t maxpacketlen;
+  int timeout;
+  int rc;
 
   if(channel == NULL || data == NULL) {
       return -1;
@@ -1139,8 +1136,17 @@ int channel_write_common(ssh_channel channel, const void *data,
       return -1;
   }
 
-  enter_function();
+  if (len > INT_MAX) {
+      ssh_log(session, SSH_LOG_PROTOCOL,
+              "Length (%u) is bigger than INT_MAX", len);
+      return SSH_ERROR;
+  }
 
+  enter_function();
+  if(ssh_is_blocking(session))
+    timeout = -2;
+  else
+    timeout = 0;
   /*
    * Handle the max packet len from remote side, be nice
    * 10 bytes for the headers
@@ -1164,7 +1170,7 @@ int channel_write_common(ssh_channel channel, const void *data,
 
 #ifdef WITH_SSH1
   if (channel->version == 1) {
-    int rc = channel_write1(channel, data, len);
+    rc = channel_write1(channel, data, len);
     leave_function();
     return rc;
   }
@@ -1181,7 +1187,10 @@ int channel_write_common(ssh_channel channel, const void *data,
           /* nothing can be written */
           ssh_log(session, SSH_LOG_PROTOCOL,
                 "Wait for a growing window message...");
-          return 0;
+          rc = ssh_handle_packets(session, timeout);
+          if (rc == SSH_ERROR || (channel->remote_window == 0 && timeout==0))
+            goto out;
+          continue;
       }
       effectivelen = len > channel->remote_window ? channel->remote_window : len;
     } else {
@@ -1220,9 +1229,14 @@ int channel_write_common(ssh_channel channel, const void *data,
     len -= effectivelen;
     data = ((uint8_t*)data + effectivelen);
   }
-
+  /* it's a good idea to flush the socket now */
+  do {
+    rc = ssh_handle_packets(session, timeout);
+  } while(ssh_socket_buffered_write_bytes(session->socket) > 0 && timeout != 0);
+out:
   leave_function();
-  return origlen;
+  return (int)(origlen - len);
+
 error:
   buffer_reinit(session->out_buffer);
 
@@ -2338,6 +2352,7 @@ int ssh_channel_read(ssh_channel channel, void *dest, uint32_t count, int is_std
   ssh_session session = channel->session;
   ssh_buffer stdbuf = channel->stdout_buffer;
   uint32_t len;
+  int rc;
 
   enter_function();
 
@@ -2386,7 +2401,10 @@ int ssh_channel_read(ssh_channel channel, void *dest, uint32_t count, int is_std
       break;
     }
 
-    ssh_handle_packets(session, -2);
+    rc = ssh_handle_packets(session, -2);
+    if (rc != SSH_OK) {
+        return rc;
+    }
   }
 
   len = buffer_get_rest_len(stdbuf);

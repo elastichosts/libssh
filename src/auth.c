@@ -68,8 +68,13 @@ static int ask_userauth(ssh_session session) {
     do {
         rc = ssh_service_request(session,"ssh-userauth");
         if (ssh_is_blocking(session)) {
-            if(rc == SSH_AGAIN)
-                ssh_handle_packets(session, -2);
+            if (rc == SSH_AGAIN) {
+                int err = ssh_handle_packets(session, -2);
+                if (err != SSH_OK) {
+                    /* error or timeout */
+                    return SSH_ERROR;
+                }
+            }
         } else {
             /* nonblocking */
             ssh_handle_packets(session, 0);
@@ -309,7 +314,7 @@ int ssh_auth_list(ssh_session session) {
  * @brief retrieves available authentication methods for this session
  * @param[in] session the SSH session
  * @param[in] username Deprecated, set to NULL.
- * @returns A bitfield of values SSH_AUTH_METHOD_NONE, SSH_AUTH_METHOD_PASSWORD,
+ * @returns A bitfield of values SSH_AUTH_METHOD_PASSWORD,
             SSH_AUTH_METHOD_PUBLICKEY, SSH_AUTH_METHOD_HOSTBASED,
             SSH_AUTH_METHOD_INTERACTIVE.
    @warning Other reserved flags may appear in future versions.
