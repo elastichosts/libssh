@@ -1,2 +1,3 @@
 version=3
-http://www.libssh.org/files/([\d.]+)/libssh-(.*)\.tar.gz
+https://red.libssh.org/projects/libssh/files \
+    /attachments/download/\d+/libssh-(.*)\.tar.gz

@@ -1,3 +1,9 @@
+libssh (0.5.1-2) UNRELEASED; urgency=low
+
+  * debian/watch: Use new tarball location
+
+ -- Laurent Bigonville <bigon@debian.org>  Mon, 19 Sep 2011 11:18:38 +0200
+
 libssh (0.5.1-1) unstable; urgency=low
 
   * New upstream release (Closes: #637445)
