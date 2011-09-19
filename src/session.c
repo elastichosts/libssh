@@ -157,7 +157,7 @@ err:
  */
 void ssh_free(ssh_session session) {
   int i;
-  enter_function();
+  struct ssh_iterator *it;
 
   if (session == NULL) {
     return;
@@ -187,9 +187,12 @@ void ssh_free(ssh_session session) {
   	ssh_poll_ctx_free(session->default_poll_ctx);
   }
   /* delete all channels */
-  while (session->channels) {
-    ssh_channel_free(session->channels);
+  while ((it=ssh_list_get_iterator(session->channels)) != NULL) {
+    ssh_channel_free(ssh_iterator_value(ssh_channel,it));
+    ssh_list_remove(session->channels, it);
   }
+  ssh_list_free(session->channels);
+  session->channels=NULL;
 #ifndef _WIN32
   agent_free(session->agent);
 #endif /* _WIN32 */
@@ -464,18 +467,12 @@ int ssh_handle_packets(ssh_session session, int timeout) {
         tm = ssh_make_milliseconds(session->timeout, session->timeout_usec);
     }
     rc = ssh_poll_ctx_dopoll(ctx, tm);
-
     if (rc == SSH_ERROR) {
         session->session_state = SSH_SESSION_STATE_ERROR;
     }
 
     leave_function();
-
-    if (session->session_state == SSH_SESSION_STATE_ERROR) {
-        return SSH_ERROR;
-    }
-
-    return SSH_OK;
+    return rc;
 }
 
 /**
@@ -498,23 +495,17 @@ int ssh_handle_packets(ssh_session session, int timeout) {
  * @return              SSH_OK on success, SSH_ERROR otherwise.
  */
 int ssh_handle_packets_termination(ssh_session session, int timeout,
-    ssh_termination_function fct, void *user){
-  int ret = SSH_ERROR;
-  struct ssh_timestamp ts;
-  ssh_timestamp_init(&ts);
+	ssh_termination_function fct, void *user){
+	int ret = SSH_OK;
 
-  while(!fct(user)){
-    ret = ssh_handle_packets(session, timeout);
-    if(ret == SSH_ERROR)
-      return SSH_ERROR;
-    if(fct(user)) {
-      return SSH_OK;
-    } else if (ssh_timeout_elapsed(&ts, timeout)) {
-      return SSH_AGAIN;
-    }
-    timeout = ssh_timeout_update(&ts,timeout);
-  }
-  return ret;
+	while(!fct(user)){
+		ret = ssh_handle_packets(session, timeout);
+		if(ret == SSH_ERROR || ret == SSH_AGAIN)
+			return ret;
+		if(fct(user)) 
+			return SSH_OK;
+	}
+	return ret;
 }
 
 /**
