@@ -2,7 +2,7 @@ Source: libssh
 Section: libs
 Priority: optional
 Maintainer: Laurent Bigonville <bigon@debian.org>
-Build-Depends: cdbs (>= 0.4.93~), debhelper (>= 8.1.3~), cmake (>= 2.6), libssl-dev, libz-dev
+Build-Depends: cdbs, debhelper (>= 8), cmake (>= 2.6), libssl-dev, libz-dev
 Build-Depends-Indep: doxygen
 Standards-Version: 3.9.2
 Vcs-Git: git://git.debian.org/git/collab-maint/libssh.git
@@ -12,8 +12,6 @@ Homepage: http://www.libssh.org/
 Package: libssh-4
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Pre-Depends: ${misc:Pre-Depends}
-Multi-Arch: same
 Description: tiny C SSH library
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client
@@ -42,7 +40,6 @@ Priority: extra
 Section: debug
 Architecture: any
 Depends: libssh-4 (= ${binary:Version}), ${misc:Depends}
-Multi-Arch: same
 Description: tiny C SSH library. Debug symbols
  The ssh library was designed to be used by programmers needing a working SSH
  implementation by the mean of a library. The complete control of the client

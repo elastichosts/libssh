@@ -1,2 +1,2 @@
-debian/tmp/usr/lib/*/libssh.so.*
-debian/tmp/usr/lib/*/libssh_threads.so.*
+debian/tmp/usr/lib/libssh.so.*
+debian/tmp/usr/lib/libssh_threads.so.*
