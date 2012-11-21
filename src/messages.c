@@ -27,6 +27,7 @@
 #include <stdlib.h>
 
 #ifndef _WIN32
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #endif
 
@@ -911,6 +912,7 @@ SSH_PACKET_CALLBACK(ssh_packet_global_request){
     char *bind_addr=NULL;
     uint32_t bind_port;
     uint8_t want_reply;
+    int rc = SSH_PACKET_USED;
     (void)user;
     (void)type;
     (void)packet;
@@ -945,9 +947,9 @@ SSH_PACKET_CALLBACK(ssh_packet_global_request){
 
         ssh_log(session, SSH_LOG_PROTOCOL, "Received SSH_MSG_GLOBAL_REQUEST %s %d %s:%d", request, want_reply, bind_addr, bind_port);
 
-        if(ssh_callbacks_exists(session->callbacks, global_request_function)) {
+        if(ssh_callbacks_exists(session->common.callbacks, global_request_function)) {
             ssh_log(session, SSH_LOG_PROTOCOL, "Calling callback for SSH_MSG_GLOBAL_REQUEST %s %d %s:%d", request, want_reply, bind_addr, bind_port);
-            session->callbacks->global_request_function(session, msg, session->callbacks->userdata);
+            session->common.callbacks->global_request_function(session, msg, session->common.callbacks->userdata);
         } else {
             ssh_message_reply_default(msg);
         }
@@ -967,19 +969,21 @@ SSH_PACKET_CALLBACK(ssh_packet_global_request){
 
         ssh_log(session, SSH_LOG_PROTOCOL, "Received SSH_MSG_GLOBAL_REQUEST %s %d %s:%d", request, want_reply, bind_addr, bind_port);
 
-        if(ssh_callbacks_exists(session->callbacks, global_request_function)) {
-            session->callbacks->global_request_function(session, msg, session->callbacks->userdata);
+        if(ssh_callbacks_exists(session->common.callbacks, global_request_function)) {
+            session->common.callbacks->global_request_function(session, msg, session->common.callbacks->userdata);
         } else {
             ssh_message_reply_default(msg);
         }
     } else {
         ssh_log(session, SSH_LOG_PROTOCOL, "UNKNOWN SSH_MSG_GLOBAL_REQUEST %s %d", request, want_reply);
+        rc = SSH_PACKET_NOT_USED;
     }
 
     SAFE_FREE(msg);
     SAFE_FREE(request);
     SAFE_FREE(bind_addr);
-    return SSH_PACKET_USED;
+
+    return rc;
 }
 
 #endif /* WITH_SERVER */
