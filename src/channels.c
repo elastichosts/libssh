@@ -30,6 +30,7 @@
 #include <time.h>
 
 #ifndef _WIN32
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #endif
 
@@ -1232,7 +1233,9 @@ int channel_write_common(ssh_channel channel, const void *data,
   /* it's a good idea to flush the socket now */
   do {
     rc = ssh_handle_packets(session, timeout);
-  } while(ssh_socket_buffered_write_bytes(session->socket) > 0 && timeout != 0);
+  } while(rc == SSH_OK &&
+          timeout != 0 &&
+          ssh_socket_buffered_write_bytes(session->socket) > 0);
 out:
   leave_function();
   return (int)(origlen - len);
@@ -1414,6 +1417,7 @@ static int channel_request(ssh_channel channel, const char *request,
       buffer_add_ssh_string(session->out_buffer, req) < 0 ||
       buffer_add_u8(session->out_buffer, reply == 0 ? 0 : 1) < 0) {
     ssh_set_error_oom(session);
+    ssh_string_free(req);
     goto error;
   }
   ssh_string_free(req);
@@ -1473,7 +1477,6 @@ static int channel_request(ssh_channel channel, const char *request,
   return rc;
 error:
   buffer_reinit(session->out_buffer);
-  ssh_string_free(req);
 
   leave_function();
   return rc;
@@ -1494,10 +1497,15 @@ error:
  */
 int ssh_channel_request_pty_size(ssh_channel channel, const char *terminal,
     int col, int row) {
-  ssh_session session = channel->session;
+  ssh_session session;
   ssh_string term = NULL;
   ssh_buffer buffer = NULL;
   int rc = SSH_ERROR;
+
+  if (channel == NULL) {
+      return SSH_ERROR;
+  }
+  session = channel->session;
 
   enter_function();
 #ifdef WITH_SSH1
@@ -2271,10 +2279,15 @@ error:
  */
 int channel_read_buffer(ssh_channel channel, ssh_buffer buffer, uint32_t count,
     int is_stderr) {
-  ssh_session session=channel->session;
+  ssh_session session;
   char buffer_tmp[8192];
   int r;
   uint32_t total=0;
+
+  if (channel == NULL) {
+      return SSH_ERROR;
+  }
+  session = channel->session;
 
   enter_function();
   buffer_reinit(buffer);

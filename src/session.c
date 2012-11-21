@@ -86,7 +86,7 @@ ssh_session ssh_new(void) {
   session->alive = 0;
   session->auth_methods = 0;
   ssh_set_blocking(session, 1);
-  session->log_indent = 0;
+  session->common.log_indent = 0;
   session->maxchannel = FIRST_CHANNEL;
 
   /* options */
@@ -143,6 +143,7 @@ ssh_session ssh_new(void) {
     return session;
 
 err:
+    free(id);
     ssh_free(session);
     return NULL;
 }
@@ -163,10 +164,20 @@ void ssh_free(ssh_session session) {
     return;
   }
 
-  SAFE_FREE(session->serverbanner);
-  SAFE_FREE(session->clientbanner);
-  SAFE_FREE(session->bindaddr);
-  SAFE_FREE(session->banner);
+  /* delete all channels */
+  while ((it=ssh_list_get_iterator(session->channels)) != NULL) {
+    ssh_channel_free(ssh_iterator_value(ssh_channel,it));
+    ssh_list_remove(session->channels, it);
+  }
+  ssh_list_free(session->channels);
+  session->channels=NULL;
+
+  ssh_socket_free(session->socket);
+
+  if (session->default_poll_ctx) {
+      ssh_poll_ctx_free(session->default_poll_ctx);
+  }
+
 #ifdef WITH_PCAP
   if(session->pcap_ctx){
   	ssh_pcap_context_free(session->pcap_ctx);
@@ -182,17 +193,6 @@ void ssh_free(ssh_session session) {
   session->in_buffer=session->out_buffer=NULL;
   crypto_free(session->current_crypto);
   crypto_free(session->next_crypto);
-  ssh_socket_free(session->socket);
-  if(session->default_poll_ctx){
-  	ssh_poll_ctx_free(session->default_poll_ctx);
-  }
-  /* delete all channels */
-  while ((it=ssh_list_get_iterator(session->channels)) != NULL) {
-    ssh_channel_free(ssh_iterator_value(ssh_channel,it));
-    ssh_list_remove(session->channels, it);
-  }
-  ssh_list_free(session->channels);
-  session->channels=NULL;
 #ifndef _WIN32
   agent_free(session->agent);
 #endif /* _WIN32 */
@@ -234,6 +234,11 @@ void ssh_free(ssh_session session) {
     }
     ssh_list_free(session->identity);
   }
+
+  SAFE_FREE(session->serverbanner);
+  SAFE_FREE(session->clientbanner);
+  SAFE_FREE(session->bindaddr);
+  SAFE_FREE(session->banner);
 
   /* options */
   SAFE_FREE(session->username);
@@ -304,7 +309,7 @@ int ssh_is_blocking(ssh_session session){
  * @brief Blocking flush of the outgoing buffer
  * @param[in] session The SSH session
  * @param[in] timeout Set an upper limit on the time for which this function
- *                    will block, in milliseconds. Specifying a negative value
+ *                    will block, in milliseconds. Specifying -1
  *                    means an infinite timeout. This parameter is passed to
  *                    the poll() function.
  * @returns           SSH_OK on success, SSH_AGAIN if timeout occurred,
@@ -313,24 +318,16 @@ int ssh_is_blocking(ssh_session session){
 
 int ssh_blocking_flush(ssh_session session, int timeout){
 	ssh_socket s;
-	struct ssh_timestamp ts;
 	int rc = SSH_OK;
 	if(session==NULL)
 		return SSH_ERROR;
 
-	enter_function();
 	s=session->socket;
-	ssh_timestamp_init(&ts);
 	while (ssh_socket_buffered_write_bytes(s) > 0 && session->alive) {
-		rc=ssh_handle_packets(session, timeout);
-		if(ssh_timeout_elapsed(&ts,timeout)){
-		  rc=SSH_AGAIN;
-		  break;
-		}
-		timeout = ssh_timeout_update(&ts, timeout);
+		rc = ssh_handle_packets(session, timeout);
+		if(rc == SSH_AGAIN || rc == SSH_ERROR) break;
 	}
 
-	leave_function();
 	return rc;
 }
 
@@ -405,17 +402,6 @@ void ssh_set_fd_except(ssh_session session) {
   }
 
   ssh_socket_set_except(session->socket);
-}
-
-static int ssh_make_milliseconds(long sec, long usec) {
-    int res = usec ? (usec / 1000) : 0;
-    res += (sec * 1000);
-    if (res == 0) {
-        res = 10 * 1000; /* use a reasonable default value in case
-                          * SSH_OPTIONS_TIMEOUT is not set in options. */
-    }
-
-    return res;
 }
 
 /**
@@ -497,13 +483,18 @@ int ssh_handle_packets(ssh_session session, int timeout) {
 int ssh_handle_packets_termination(ssh_session session, int timeout,
 	ssh_termination_function fct, void *user){
 	int ret = SSH_OK;
-
+	struct ssh_timestamp ts;
+	ssh_timestamp_init(&ts);
 	while(!fct(user)){
 		ret = ssh_handle_packets(session, timeout);
 		if(ret == SSH_ERROR || ret == SSH_AGAIN)
 			return ret;
 		if(fct(user)) 
 			return SSH_OK;
+		else if(ssh_timeout_elapsed(&ts, timeout == -2 ? ssh_make_milliseconds(session->timeout, session->timeout_usec) : timeout))
+			/* it is possible that we get unrelated packets but still timeout our request,
+			 * so simply relying on the poll timeout is not enough */
+			return SSH_AGAIN;
 	}
 	return ret;
 }
