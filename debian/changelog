@@ -1,3 +1,11 @@
+libssh (0.5.3-1) UNRELEASED; urgency=high
+
+  * New upstream security release
+    - Fixes CVE-2012-4559, CVE-2012-4560, CVE-2012-4561, CVE-2012-4562
+    - Fix regression in pre-connected socket setting (Closes: #688700)
+
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 21 Nov 2012 13:21:11 +0100
+
 libssh (0.5.2-1) unstable; urgency=low
 
   * New upstream release
