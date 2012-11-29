@@ -1,2 +1,5 @@
 0001-socket.c-Fixed-setting-max_fd-which-breaks-ssh_selec.patch
 0002-socket-Fixed-uninitialized-fd-revents-member.patch
+CVE-2012-4559.patch
+CVE-2012-4561.patch
+CVE-2012-4562.patch

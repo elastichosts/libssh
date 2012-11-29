@@ -1,3 +1,11 @@
+libssh (0.4.5-3+squeeze1) stable-security; urgency=high
+
+  * Stable security update: Fix possible denial of service and code
+    execution via buffer overflows and double frees (CVE-2012-4559,
+    CVE-2012-4561, CVE-2012-4562)
+
+ -- Laurent Bigonville <bigon@debian.org>  Thu, 29 Nov 2012 23:38:23 +0100
+
 libssh (0.4.5-3) unstable; urgency=low
 
   * d/p/0002-socket-Fixed-uninitialized-fd-revents-member.patch:
