@@ -26,6 +26,7 @@
 #include <string.h>
 
 #ifndef _WIN32
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #endif
 
@@ -40,8 +41,8 @@
 #include "libssh/misc.h"
 
 #define set_status(session, status) do {\
-        if (session->callbacks && session->callbacks->connect_status_function) \
-            session->callbacks->connect_status_function(session->callbacks->userdata, status); \
+        if (session->common.callbacks && session->common.callbacks->connect_status_function) \
+            session->common.callbacks->connect_status_function(session->common.callbacks->userdata, status); \
     } while (0)
 
 /**
@@ -664,7 +665,7 @@ int ssh_connect(ssh_session session) {
   session->socket_callbacks.exception=ssh_socket_exception_callback;
   session->socket_callbacks.userdata=session;
   if (session->fd != SSH_INVALID_SOCKET) {
-    ssh_socket_set_fd(session->socket, session->fd);
+    ssh_socket_set_connecting(session->socket, session->fd);
     ret=SSH_OK;
 #ifndef _WIN32
   } else if (session->ProxyCommand != NULL){

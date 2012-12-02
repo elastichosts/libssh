@@ -610,9 +610,9 @@ static int pem_get_password(char *buf, int size, int rwflag, void *userdata) {
   ssh_log(session, SSH_LOG_RARE,
       "Trying to call external authentication function");
 
-  if (session && session->callbacks && session->callbacks->auth_function) {
-    if (session->callbacks->auth_function("Passphrase for private key:", buf, size, 0, 0,
-        session->callbacks->userdata) < 0) {
+  if (session && session->common.callbacks && session->common.callbacks->auth_function) {
+    if (session->common.callbacks->auth_function("Passphrase for private key:", buf, size, 0, 0,
+        session->common.callbacks->userdata) < 0) {
       return 0;
     }
 
@@ -705,7 +705,7 @@ ssh_private_key privatekey_from_file(ssh_session session, const char *filename,
 
   ssh_log(session, SSH_LOG_RARE, "Trying to read %s, passphase=%s, authcb=%s",
       filename, passphrase ? "true" : "false",
-      session->callbacks && session->callbacks->auth_function ? "true" : "false");
+      session->common.callbacks && session->common.callbacks->auth_function ? "true" : "false");
 
   if (type == 0) {
     type = privatekey_type_from_file(file);
@@ -719,9 +719,9 @@ ssh_private_key privatekey_from_file(ssh_session session, const char *filename,
     case SSH_KEYTYPE_DSS:
       if (passphrase == NULL) {
 #ifdef HAVE_LIBGCRYPT
-        if (session->callbacks && session->callbacks->auth_function) {
-          auth_cb = session->callbacks->auth_function;
-          auth_ud = session->callbacks->userdata;
+        if (session->common.callbacks && session->common.callbacks->auth_function) {
+          auth_cb = session->common.callbacks->auth_function;
+          auth_ud = session->common.callbacks->userdata;
 
           valid = read_dsa_privatekey(file, &dsa, auth_cb, auth_ud,
               "Passphrase for private key:");
@@ -738,7 +738,7 @@ ssh_private_key privatekey_from_file(ssh_session session, const char *filename,
       if (!valid) {
         ssh_set_error(session, SSH_FATAL, "Parsing private key %s", filename);
 #elif defined HAVE_LIBCRYPTO
-        if (session->callbacks && session->callbacks->auth_function) {
+        if (session->common.callbacks && session->common.callbacks->auth_function) {
           dsa = PEM_read_bio_DSAPrivateKey(bio, NULL, pem_get_password, session);
         } else { /* authcb */
           /* openssl uses its own callback to get the passphrase here */
@@ -761,9 +761,9 @@ ssh_private_key privatekey_from_file(ssh_session session, const char *filename,
     case SSH_KEYTYPE_RSA:
       if (passphrase == NULL) {
 #ifdef HAVE_LIBGCRYPT
-        if (session->callbacks && session->callbacks->auth_function) {
-          auth_cb = session->callbacks->auth_function;
-          auth_ud = session->callbacks->userdata;
+        if (session->common.callbacks && session->common.callbacks->auth_function) {
+          auth_cb = session->common.callbacks->auth_function;
+          auth_ud = session->common.callbacks->userdata;
           valid = read_rsa_privatekey(file, &rsa, auth_cb, auth_ud,
               "Passphrase for private key:");
         } else { /* authcb */
@@ -779,7 +779,7 @@ ssh_private_key privatekey_from_file(ssh_session session, const char *filename,
       if (!valid) {
         ssh_set_error(session,SSH_FATAL, "Parsing private key %s", filename);
 #elif defined HAVE_LIBCRYPTO
-        if (session->callbacks && session->callbacks->auth_function) {
+        if (session->common.callbacks && session->common.callbacks->auth_function) {
 			rsa = PEM_read_bio_RSAPrivateKey(bio, NULL, pem_get_password, session);
         } else { /* authcb */
           /* openssl uses its own callback to get the passphrase here */
@@ -1214,7 +1214,7 @@ ssh_string try_publickey_from_file(ssh_session session, struct ssh_keys_struct k
   const char *priv;
   const char *pub;
   char *new;
-  ssh_string pubkey=NULL;
+  ssh_string pubkey;
 
   pub = keytab.publickey;
   if (pub == NULL) {
@@ -1234,13 +1234,13 @@ ssh_string try_publickey_from_file(ssh_session session, struct ssh_keys_struct k
   ssh_log(session, SSH_LOG_PACKET, "Trying to open publickey %s", pub);
   if (!ssh_file_readaccess_ok(pub)) {
     ssh_log(session, SSH_LOG_PACKET, "Failed to open publickey %s", pub);
-    goto error;
+    return NULL;
   }
 
   ssh_log(session, SSH_LOG_PACKET, "Trying to open privatekey %s", priv);
   if (!ssh_file_readaccess_ok(priv)) {
     ssh_log(session, SSH_LOG_PACKET, "Failed to open privatekey %s", priv);
-    goto error;
+    return NULL;
   }
 
   ssh_log(session, SSH_LOG_PACKET, "Success opening public and private key");
@@ -1255,18 +1255,18 @@ ssh_string try_publickey_from_file(ssh_session session, struct ssh_keys_struct k
         "Wasn't able to open public key file %s: %s",
         pub,
         ssh_get_error(session));
-    goto error;
+    return NULL;
   }
 
   new = realloc(*privkeyfile, strlen(priv) + 1);
   if (new == NULL) {
     ssh_string_free(pubkey);
-    goto error;
+    return NULL;
   }
 
   strcpy(new, priv);
   *privkeyfile = new;
-error:
+
   return pubkey;
 }
 

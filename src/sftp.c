@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 
 #ifndef _WIN32
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #else
 #define S_IFSOCK 0140000
@@ -668,10 +669,18 @@ int sftp_extension_supported(sftp_session sftp, const char *name,
     const char *data) {
   int i, n;
 
+  if (sftp == NULL || name == NULL || data == NULL) {
+    return 0;
+  }
+
   n = sftp_extensions_get_count(sftp);
   for (i = 0; i < n; i++) {
-    if (strcmp(sftp_extensions_get_name(sftp, i), name) == 0 &&
-        strcmp(sftp_extensions_get_data(sftp, i), data) == 0) {
+    const char *ext_name = sftp_extensions_get_name(sftp, i);
+    const char *ext_data = sftp_extensions_get_data(sftp, i);
+
+    if (ext_name != NULL && ext_data != NULL &&
+        strcmp(ext_name, name) == 0 &&
+        strcmp(ext_data, data) == 0) {
       return 1;
     }
   }
@@ -939,6 +948,7 @@ sftp_dir sftp_opendir(sftp_session sftp, const char *path){
         dir = malloc(sizeof(struct sftp_dir_struct));
         if (dir == NULL) {
           ssh_set_error_oom(sftp->session);
+          free(file);
           return NULL;
         }
         ZERO_STRUCTP(dir);
@@ -1193,8 +1203,8 @@ static char *sftp_parse_longname(const char *longname,
                    so that number of pairs equals extended_count              */
 static sftp_attributes sftp_parse_attr_3(sftp_session sftp, ssh_buffer buf,
     int expectname) {
-  ssh_string longname = NULL;
-  ssh_string name = NULL;
+  ssh_string longname;
+  ssh_string name;
   sftp_attributes attr;
   uint32_t flags = 0;
   int ok = 0;
@@ -1209,19 +1219,27 @@ static sftp_attributes sftp_parse_attr_3(sftp_session sftp, ssh_buffer buf,
   /* This isn't really a loop, but it is like a try..catch.. */
   do {
     if (expectname) {
-      if ((name = buffer_get_ssh_string(buf)) == NULL ||
-          (attr->name = ssh_string_to_char(name)) == NULL) {
-        break;
+      name = buffer_get_ssh_string(buf);
+      if (name == NULL) {
+          break;
       }
+      attr->name = ssh_string_to_char(name);
       ssh_string_free(name);
+      if (attr->name == NULL) {
+          break;
+      }
 
       ssh_log(sftp->session, SSH_LOG_RARE, "Name: %s", attr->name);
 
-      if ((longname=buffer_get_ssh_string(buf)) == NULL ||
-          (attr->longname=ssh_string_to_char(longname)) == NULL) {
+      longname = buffer_get_ssh_string(buf);
+      if (longname == NULL) {
+          break;
+      }
+      attr->longname = ssh_string_to_char(longname);
+      ssh_string_free(longname);
+      if (attr->longname == NULL) {
         break;
       }
-      ssh_string_free(longname);
 
       /* Set owner and group if we talk to openssh and have the longname */
       if (ssh_get_openssh_version(sftp->session)) {
@@ -1326,8 +1344,6 @@ static sftp_attributes sftp_parse_attr_3(sftp_session sftp, ssh_buffer buf,
 
   if (!ok) {
     /* break issued somewhere */
-    ssh_string_free(name);
-    ssh_string_free(longname);
     ssh_string_free(attr->extended_type);
     ssh_string_free(attr->extended_data);
     SAFE_FREE(attr->name);
@@ -2269,6 +2285,7 @@ int sftp_mkdir(sftp_session sftp, const char *directory, mode_t mode) {
       sftp_packet_write(sftp, SSH_FXP_MKDIR, buffer) < 0) {
     ssh_buffer_free(buffer);
     ssh_string_free(path);
+    return -1;
   }
   ssh_buffer_free(buffer);
   ssh_string_free(path);
