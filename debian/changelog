@@ -1,3 +1,11 @@
+libssh (0.5.4-1) UNRELEASED; urgency=low
+
+  * New upstream security release
+    - Fix NULL dereference leads to denial of service
+      (Closes: #698963, CVE-2013-0176)
+
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 25 Jan 2013 21:08:57 +0100
+
 libssh (0.5.3-1) unstable; urgency=high
 
   * New upstream security release
