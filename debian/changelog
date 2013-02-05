@@ -3,8 +3,9 @@ libssh (0.5.4-1) UNRELEASED; urgency=low
   * New upstream security release
     - Fix NULL dereference leads to denial of service
       (Closes: #698963, CVE-2013-0176)
+  * debian/patches/0003-fix-typo.patch: Fix typo in error message
 
- -- Laurent Bigonville <bigon@debian.org>  Fri, 25 Jan 2013 21:08:57 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Tue, 05 Feb 2013 01:06:02 +0100
 
 libssh (0.5.3-1) unstable; urgency=high
 
