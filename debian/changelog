@@ -11,6 +11,8 @@ libssh (0.5.4-2) UNRELEASED; urgency=low
     + Add patch 0006-ssh-handle-package-zero-timeouts.patch: Handle
       zero timeouts as such. Improves speed on libssh issued
       connections. (Closes: #738667).
+  * Update libssh-4.symbols file with new symbol introduced by patch
+    0005-multi-reverse-fwd.patch.
 
  -- Mike Gabriel <sunweaver@debian.org>  Tue, 21 Jan 2014 09:56:46 +0100
 
