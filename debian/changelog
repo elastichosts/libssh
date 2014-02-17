@@ -3,6 +3,7 @@ libssh (0.5.4-2) UNRELEASED; urgency=low
   * debian/control:
     + Add myself to Uploaders: field as discussed with current
       maintainer on IRC (#debian-devel) on 2014-02-17.
+    + Alioth-canonicalize Vcs-* fields.
   * debian/copyright:
     + Make copyright file DEP-5 compliant.
   * debian/patches:
