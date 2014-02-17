@@ -1,3 +1,19 @@
+libssh (0.5.4-2) UNRELEASED; urgency=low
+
+  * debian/control:
+    + Add myself to Uploaders: field as discussed with current
+      maintainer on IRC (#debian-devel) on 2014-02-17.
+  * debian/patches:
+    + Add patch 0004-reset-global-request-status.patch: Allow requesting
+      more than one channel per session.
+    + Add patch 0005-multi-reverse-fwd.patch: Ease handling of multiple
+      reverse port forwarding requests per session. (Closes: #736231).
+    + Add patch 0006-ssh-handle-package-zero-timeouts.patch: Handle
+      zero timeouts as such. Improves speed on libssh issued
+      connections. (Closes: #738667).
+
+ -- Mike Gabriel <sunweaver@debian.org>  Tue, 21 Jan 2014 09:56:46 +0100
+
 libssh (0.5.4-1) unstable; urgency=low
 
   * New upstream security release
