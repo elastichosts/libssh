@@ -73,8 +73,7 @@ Files: include/libssh/auth.h
        tests/client/torture_knownhosts.c
        tests/test_pcap.c
        tests/test_socket.c
-Copyright: 2003, Aris Adamantiadis
-           2003,2010, Aris Adamantiadis
+Copyright: 2003-2010 Aris Adamantiadis
 License: LGPL-2.1+~OpenSSL
 
 Files: examples/exec.c
@@ -141,7 +140,7 @@ Files: src/auth.c
        src/options.c
        src/sftp.c
 Copyright: 2003-2009, Aris Adamantiadis
-  2009, Andreas Schneider <mail@cynapses.org>
+           2009, Andreas Schneider <mail@cynapses.org>
 License: LGPL-2.1+~OpenSSL
 
 Files: src/agent.c
@@ -187,7 +186,7 @@ Files: cmake/Modules/FindGCrypt.cmake
        cmake/Modules/MacroAddCompileFlags.cmake
        cmake/Modules/MacroAddLinkFlags.cmake
        cmake/Modules/MacroAddPlugin.cmake
-       cmake/Modules/MacroCopyFile.cmake,
+       cmake/Modules/MacroCopyFile.cmake
        cmake/Modules/MacroEnsureOutOfSourceBuild.cmake
 Copyright: 2009, Andreas Schneider
            2006, Oswald Buddenhagen
