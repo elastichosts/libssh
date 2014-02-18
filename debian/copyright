@@ -201,8 +201,7 @@ Files: debian/*
 Copyright: 2005-2006, Jean-Philippe Garcia Ballester <giga@le-pec.org>
            2006-2013, Laurent Bigonville <bigon@debian.org>
            2014, Mike Gabriel <sunweaver@debian.org>
-License: GPL-2+
-### FIXME: RELICENSE AS LGPL-2.1+~OpenSSL or BSD-2-clause ###
+License: LGPL-2.1+~OpenSSL or BSD-2-clause or BSD-3-clause
 
 License: LGPL-2.1+~OpenSSL
  This library is free software; you can redistribute it and/or

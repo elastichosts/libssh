@@ -6,6 +6,9 @@ libssh (0.5.4-2) UNRELEASED; urgency=low
     + Alioth-canonicalize Vcs-* fields.
   * debian/copyright:
     + Make copyright file DEP-5 compliant.
+    + Relicense debian/* files under all licenses used by upstream.
+      Copyright holders' agreements can be found in the related
+      bug report in Debian BTS. (Closes: #739372).
   * debian/patches:
     + Add patch 0004-reset-global-request-status.patch: Allow requesting
       more than one channel per session.
