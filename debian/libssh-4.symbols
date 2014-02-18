@@ -106,7 +106,7 @@ libssh.so.4 libssh-4 #MINVER#
  ssh_buffer_get_begin@Base 0.5.0
  ssh_buffer_get_len@Base 0.5.0
  ssh_buffer_new@Base 0.5.0
- ssh_channel_accept_forward@Base 0.5.4-2
+ ssh_channel_accept_forward@Base 0.5.4-2~
  ssh_channel_accept_x11@Base 0.5.0
  ssh_channel_change_pty_size@Base 0.5.0
  ssh_channel_close@Base 0.5.0
