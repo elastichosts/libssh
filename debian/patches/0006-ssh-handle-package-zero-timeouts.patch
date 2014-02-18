@@ -1,3 +1,6 @@
+Description: Handle packet timeouts properly (speed improvement)
+Author: Oleksandr Shneyder <o.schneyder@phoca-gmbh.de>
+Origin: http://git.libssh.org/projects/libssh.git/commit/?id=d90478448985a1e21cc240fd87fc5a14b4bb978a
 --- a/src/channels.c
 +++ b/src/channels.c
 @@ -1769,7 +1769,11 @@
