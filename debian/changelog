@@ -1,4 +1,4 @@
-libssh (0.5.4-2) UNRELEASED; urgency=low
+libssh (0.5.4-2) unstable; urgency=low
 
   * debian/control:
     + Add myself to Uploaders: field as discussed with current
@@ -20,7 +20,7 @@ libssh (0.5.4-2) UNRELEASED; urgency=low
   * Update libssh-4.symbols file with new symbol introduced by patch
     0005-multi-reverse-fwd.patch.
 
- -- Mike Gabriel <sunweaver@debian.org>  Tue, 21 Jan 2014 09:56:46 +0100
+ -- Mike Gabriel <sunweaver@debian.org>  Tue, 18 Feb 2014 13:34:13 +0100
 
 libssh (0.5.4-1) unstable; urgency=low
 
