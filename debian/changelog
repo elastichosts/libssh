@@ -1,6 +1,8 @@
 libssh (0.6.1-1~exp1) UNRELEASED; urgency=low
 
   * New upstream release.
+  * debian/control:
+    + Bump Standards: to 3.9.5. No changes needed.
   * debian/patches:
     + Remove obsolete patches (all applied upstream).
     + Add patch for fixing a typos in upstream error messages.
