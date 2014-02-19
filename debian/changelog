@@ -1,4 +1,4 @@
-libssh (0.6.1-1~exp1) UNRELEASED; urgency=low
+libssh (0.6.1-1~exp1) experimental; urgency=low
 
   * New upstream release.
   * debian/control:
@@ -11,7 +11,7 @@ libssh (0.6.1-1~exp1) UNRELEASED; urgency=low
   * Update debian/copyright.in file.
   * Update debian/copyright file.
 
- -- Mike Gabriel <sunweaver@debian.org>  Wed, 19 Feb 2014 08:41:23 +0100
+ -- Mike Gabriel <sunweaver@debian.org>  Wed, 19 Feb 2014 12:54:32 +0100
 
 libssh (0.5.4-3) UNRELEASED; urgency=low
 
