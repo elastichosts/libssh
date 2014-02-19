@@ -1,6 +1,9 @@
 libssh (0.6.1-1~exp1) UNRELEASED; urgency=low
 
   * New upstream release.
+  * debian/patches:
+    + Remove obsolete patches (all applied upstream).
+    + Add patch for fixing a typos in upstream error messages.
 
  -- Mike Gabriel <sunweaver@debian.org>  Wed, 19 Feb 2014 08:41:23 +0100
 

@@ -1,6 +1,2 @@
-0001-disable-latex-documentation.patch
-0002-fix-html-doc-generation.patch
-0003-fix-typo.patch
-0004-reset-global-request-status.patch
-0005-multi-reverse-fwd.patch
-0006-ssh-handle-package-zero-timeouts.patch
+1001_error-msg-typo-fix.patch
+2002-fix-html-doc-generation.patch
