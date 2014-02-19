@@ -19,22 +19,27 @@
  * MA 02111-1307, USA.
  */
 
+#include "config.h"
+
+#include <stdlib.h>
+
 #ifndef _WIN32
 #include <netinet/in.h>
 #endif /* _WIN32 */
 
-#include "config.h"
 #include "libssh/priv.h"
 #include "libssh/ssh1.h"
+#include "libssh/crc32.h"
 #include "libssh/packet.h"
 #include "libssh/session.h"
 #include "libssh/buffer.h"
 #include "libssh/socket.h"
 #include "libssh/kex.h"
+#include "libssh/crypto.h"
 
 #ifdef WITH_SSH1
 
-ssh_packet_callback default_packet_handlers1[]= {
+static ssh_packet_callback default_packet_handlers1[]= {
   NULL,                           //SSH_MSG_NONE                        0
   ssh_packet_disconnect1,         //SSH_MSG_DISCONNECT                  1
   ssh_packet_publickey1,          //SSH_SMSG_PUBLIC_KEY                 2
@@ -101,9 +106,8 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
   size_t processed=0;
   uint32_t padding;
   uint32_t crc;
-  uint32_t len;
+  uint32_t len, buffer_len;
   ssh_session session=(ssh_session)user;
-  enter_function();
 
   switch (session->packet_state){
     case PACKET_STATE_INIT:
@@ -121,7 +125,6 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
       }
       /* must have at least enough bytes for size */
       if(receivedlen < sizeof(uint32_t)){
-        leave_function();
         return 0;
       }
       memcpy(&len,data,sizeof(uint32_t));
@@ -135,10 +138,11 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
         goto error;
       }
 
-      ssh_log(session, SSH_LOG_PACKET, "Reading a %d bytes packet", len);
+      SSH_LOG(SSH_LOG_PACKET, "Reading a %d bytes packet", len);
 
       session->in_packet.len = len;
       session->packet_state = PACKET_STATE_SIZEREAD;
+      /* FALL THROUGH */
     case PACKET_STATE_SIZEREAD:
       len = session->in_packet.len;
       /* SSH-1 has a fixed padding lenght */
@@ -146,14 +150,12 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
       to_be_read = len + padding;
       if(to_be_read + processed > receivedlen){
         /* wait for rest of packet */
-        leave_function();
         return processed;
       }
       /* it is _not_ possible that to_be_read be < 8. */
       packet = (char *)data + processed;
 
       if (buffer_add_data(session->in_buffer,packet,to_be_read) < 0) {
-        SAFE_FREE(packet);
         goto error;
       }
       processed += to_be_read;
@@ -166,21 +168,26 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
          * We decrypt everything, missing the lenght part (which was
          * previously read, unencrypted, and is not part of the buffer
          */
-        if (packet_decrypt(session,
-              ssh_buffer_get_begin(session->in_buffer),
-              ssh_buffer_get_len(session->in_buffer)) < 0) {
-          ssh_set_error(session, SSH_FATAL, "Packet decrypt error");
-          goto error;
+        buffer_len = ssh_buffer_get_len(session->in_buffer);
+        if (buffer_len > 0) {
+          int rc;
+          rc = packet_decrypt(session,
+                 ssh_buffer_get_begin(session->in_buffer),
+                 buffer_len);
+          if (rc < 0) {
+            ssh_set_error(session, SSH_FATAL, "Packet decrypt error");
+            goto error;
+          }
         }
       }
 #ifdef DEBUG_CRYPTO
       ssh_print_hexa("read packet decrypted:", ssh_buffer_get_begin(session->in_buffer),
           ssh_buffer_get_len(session->in_buffer));
 #endif
-      ssh_log(session, SSH_LOG_PACKET, "%d bytes padding", padding);
+      SSH_LOG(SSH_LOG_PACKET, "%d bytes padding", padding);
       if(((len + padding) != buffer_get_rest_len(session->in_buffer)) ||
           ((len + padding) < sizeof(uint32_t))) {
-        ssh_log(session, SSH_LOG_RARE, "no crc32 in packet");
+        SSH_LOG(SSH_LOG_RARE, "no crc32 in packet");
         ssh_set_error(session, SSH_FATAL, "no crc32 in packet");
         goto error;
       }
@@ -196,7 +203,7 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
         ssh_print_hexa("crc32 on",buffer_get_rest(session->in_buffer),
             len + padding - sizeof(uint32_t));
 #endif
-        ssh_log(session, SSH_LOG_RARE, "Invalid crc32");
+        SSH_LOG(SSH_LOG_RARE, "Invalid crc32");
         ssh_set_error(session, SSH_FATAL,
             "Invalid crc32: expected %.8x, got %.8x",
             crc,
@@ -206,10 +213,10 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
       }
       /* pass the padding */
       buffer_pass_bytes(session->in_buffer, padding);
-      ssh_log(session, SSH_LOG_PACKET, "The packet is valid");
+      SSH_LOG(SSH_LOG_PACKET, "The packet is valid");
 
 /* TODO FIXME
-#if defined(HAVE_LIBZ) && defined(WITH_LIBZ)
+#ifdef WITH_ZLIB
     if(session->current_crypto && session->current_crypto->do_compress_in){
         decompress_buffer(session,session->in_buffer);
     }
@@ -225,22 +232,22 @@ int ssh_packet_socket_callback1(const void *data, size_t receivedlen, void *user
       if(processed < receivedlen){
         int rc;
         /* Handle a potential packet left in socket buffer */
-        ssh_log(session,SSH_LOG_PACKET,"Processing %" PRIdS " bytes left in socket buffer",
+        SSH_LOG(SSH_LOG_PACKET,"Processing %" PRIdS " bytes left in socket buffer",
             receivedlen-processed);
         rc = ssh_packet_socket_callback1((char *)data + processed,
             receivedlen - processed,user);
         processed += rc;
       }
-      leave_function();
+
       return processed;
     case PACKET_STATE_PROCESSING:
-      ssh_log(session, SSH_LOG_RARE, "Nested packet processing. Delaying.");
+      SSH_LOG(SSH_LOG_RARE, "Nested packet processing. Delaying.");
       return 0;
   }
 
 error:
   session->session_state=SSH_SESSION_STATE_ERROR;
-  leave_function();
+
   return processed;
 }
 
@@ -255,11 +262,10 @@ int packet_send1(ssh_session session) {
   uint32_t crc;
   uint8_t padding;
 
-  enter_function();
-  ssh_log(session,SSH_LOG_PACKET,"Sending a %d bytes long packet",currentlen);
+  SSH_LOG(SSH_LOG_PACKET,"Sending a %d bytes long packet",currentlen);
 
 /* TODO FIXME
-#if defined(HAVE_LIBZ) && defined(WITH_LIBZ)
+#ifdef WITH_ZLIB
   if (session->current_crypto && session->current_crypto->do_compress_out) {
     if (compress_buffer(session, session->out_buffer) < 0) {
       goto error;
@@ -276,7 +282,7 @@ int packet_send1(ssh_session session) {
   }
 
   finallen = htonl(currentlen);
-  ssh_log(session, SSH_LOG_PACKET,
+  SSH_LOG(SSH_LOG_PACKET,
       "%d bytes after comp + %d padding bytes = %d bytes packet",
       currentlen, padding, ntohl(finallen));
 
@@ -299,6 +305,8 @@ int packet_send1(ssh_session session) {
       ssh_buffer_get_len(session->out_buffer));
 #endif
 
+  /* session->out_buffer should have more than sizeof(uint32_t) bytes
+     in it as required for packet_encrypt */
   packet_encrypt(session, (unsigned char *)ssh_buffer_get_begin(session->out_buffer) + sizeof(uint32_t),
       ssh_buffer_get_len(session->out_buffer) - sizeof(uint32_t));
 
@@ -318,7 +326,7 @@ int packet_send1(ssh_session session) {
     rc = SSH_ERROR;
   }
 error:
-  leave_function();
+
   return rc;     /* SSH_OK, AGAIN or ERROR */
 }
 
@@ -326,7 +334,7 @@ SSH_PACKET_CALLBACK(ssh_packet_disconnect1){
   (void)packet;
   (void)user;
   (void)type;
-  ssh_log(session, SSH_LOG_PACKET, "Received SSH_MSG_DISCONNECT");
+  SSH_LOG(SSH_LOG_PACKET, "Received SSH_MSG_DISCONNECT");
   ssh_set_error(session, SSH_FATAL, "Received SSH_MSG_DISCONNECT");
   ssh_socket_close(session->socket);
   session->alive = 0;
