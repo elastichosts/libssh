@@ -11,7 +11,6 @@ Files: include/libssh/auth.h
        include/libssh/crypto.h
        include/libssh/dh.h
        include/libssh/kex.h
-       include/libssh/keyfiles.h
        include/libssh/keys.h
        include/libssh/legacy.h
        include/libssh/libcrypto.h
@@ -44,7 +43,6 @@ Files: include/libssh/auth.h
        src/gcrypt_missing.c
        src/init.c
        src/kex.c
-       src/keys.c
        src/legacy.c
        src/libcrypto.c
        src/libgcrypt.c
@@ -134,7 +132,6 @@ Files: src/auth.c
        src/channels1.c
        src/dh.c
        src/gzip.c
-       src/keyfiles.c
        src/known_hosts.c
        src/misc.c
        src/options.c
@@ -183,10 +180,6 @@ Comment:
 Files: cmake/Modules/FindGCrypt.cmake
        cmake/Modules/FindOpenSSL.cmake
        cmake/Modules/FindZLIB.cmake
-       cmake/Modules/MacroAddCompileFlags.cmake
-       cmake/Modules/MacroAddLinkFlags.cmake
-       cmake/Modules/MacroAddPlugin.cmake
-       cmake/Modules/MacroCopyFile.cmake
        cmake/Modules/MacroEnsureOutOfSourceBuild.cmake
 Copyright: 2009, Andreas Schneider
            2006, Oswald Buddenhagen
