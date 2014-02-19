@@ -9,6 +9,7 @@ libssh (0.6.1-1~exp1) UNRELEASED; urgency=low
   * Provide upstream signing key in package.
   * Update debian/libssh-4.symbols file.
   * Update debian/copyright.in file.
+  * Update debian/copyright file.
 
  -- Mike Gabriel <sunweaver@debian.org>  Wed, 19 Feb 2014 08:41:23 +0100
 
