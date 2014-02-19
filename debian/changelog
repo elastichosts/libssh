@@ -8,6 +8,8 @@ libssh (0.5.4-3) UNRELEASED; urgency=low
 
   * debian/rules:
     + Add get-orig-source rule.
+  * debian/watch:
+    + Handle tar.gz and tar.xz upstream tarballs alike.
 
  -- Mike Gabriel <sunweaver@debian.org>  Wed, 19 Feb 2014 08:39:36 +0100
 
