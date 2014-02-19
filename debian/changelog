@@ -5,7 +5,7 @@ libssh (0.6.1-1~exp1) UNRELEASED; urgency=low
     + Bump Standards: to 3.9.5. No changes needed.
   * debian/patches:
     + Remove obsolete patches (all applied upstream).
-    + Add patch for fixing a typos in upstream error messages.
+    + Add patch for fixing typos in upstream error messages.
   * Provide upstream signing key in package.
   * Update debian/libssh-4.symbols file.
   * Update debian/copyright.in file.
