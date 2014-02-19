@@ -27,7 +27,10 @@
  * @{
  */
 
+#include "config.h"
+
 #include "libssh/priv.h"
+#include "libssh/crypto.h"
 #include "libssh/threads.h"
 
 static int threads_noop (void **lock){
@@ -49,15 +52,35 @@ static struct ssh_threads_callbacks_struct ssh_threads_noop =
     threads_id_noop
 };
 
-struct ssh_threads_callbacks_struct *ssh_threads_get_noop(){
+struct ssh_threads_callbacks_struct *ssh_threads_get_noop(void) {
 	return &ssh_threads_noop;
 }
 
 static struct ssh_threads_callbacks_struct *user_callbacks =&ssh_threads_noop;
 
 #ifdef HAVE_LIBGCRYPT
+#if (GCRYPT_VERSION_NUMBER >= 0x010600)
+/* libgcrypt >= 1.6 does not support custom callbacks */
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
-/* Libgcrypt specific way of handling thread callbacks */
+static int libgcrypt_thread_init(void){
+	if(user_callbacks == NULL)
+		return SSH_ERROR;
+	if(user_callbacks == &ssh_threads_noop)
+		return SSH_OK;
+	if (strcmp(user_callbacks->type, "threads_pthread") == 0){
+		gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+		return SSH_OK;
+	} else {
+		/* not supported */
+		SSH_LOG(SSH_LOG_WARN, "Custom thread handlers not supported with libgcrypt >=1.6, using pthreads");
+		gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+		return SSH_OK;
+	}
+}
+
+#else
+/* Libgcrypt < 1.6 specific way of handling thread callbacks */
 
 static struct gcry_thread_cbs gcrypt_threads_callbacks;
 
@@ -76,11 +99,12 @@ static int libgcrypt_thread_init(void){
 	gcry_control(GCRYCTL_SET_THREAD_CBS, &gcrypt_threads_callbacks);
 	return SSH_OK;
 }
-#else
+#endif /* GCRYPT_VERSION_NUMBER */
+#else /* HAVE_LIBGCRYPT */
 
 /* Libcrypto specific stuff */
 
-void **libcrypto_mutexes;
+static void **libcrypto_mutexes;
 
 static void libcrypto_lock_callback(int mode, int i, const char *file, int line){
 	(void)file;
@@ -162,7 +186,7 @@ int ssh_threads_set_callbacks(struct ssh_threads_callbacks_struct *cb){
   return SSH_OK;
 }
 
-const char *ssh_threads_get_type(){
+const char *ssh_threads_get_type(void) {
 	if(user_callbacks != NULL)
 		return user_callbacks->type;
 	return NULL;

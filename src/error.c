@@ -48,14 +48,24 @@
  *
  * @param  ...         The arguments for the format string.
  */
-void ssh_set_error(void *error, int code, const char *descr, ...) {
-  struct ssh_common_struct *err = error;
-  va_list va;
-  va_start(va, descr);
-  vsnprintf(err->error.error_buffer, ERROR_BUFFERLEN, descr, va);
-  va_end(va);
-  err->error.error_code = code;
-  ssh_log_common(err,SSH_LOG_RARE,"Error : %s",err->error.error_buffer);
+void _ssh_set_error(void *error,
+                    int code,
+                    const char *function,
+                    const char *descr, ...)
+{
+    struct ssh_common_struct *err = error;
+    va_list va;
+
+    va_start(va, descr);
+    vsnprintf(err->error.error_buffer, ERROR_BUFFERLEN, descr, va);
+    va_end(va);
+
+    err->error.error_code = code;
+    if (ssh_get_log_level() >= SSH_LOG_WARN) {
+        ssh_log_function(SSH_LOG_WARN,
+                         function,
+                         err->error.error_buffer);
+    }
 }
 
 /**
@@ -66,11 +76,13 @@ void ssh_set_error(void *error, int code, const char *descr, ...) {
  * @param  error       The place to store the error.
  *
  */
-void ssh_set_error_oom(void *error) {
-  struct error_struct *err = error;
+void _ssh_set_error_oom(void *error, const char *function)
+{
+    struct error_struct *err = error;
 
-  strcpy(err->error_buffer, "Out of memory");
-  err->error_code = SSH_FATAL;
+    snprintf(err->error_buffer, sizeof(err->error_buffer),
+            "%s: Out of memory", function);
+    err->error_code = SSH_FATAL;
 }
 
 /**
@@ -83,14 +95,16 @@ void ssh_set_error_oom(void *error) {
  * @param  function    The function the error happened in.
  *
  */
-void ssh_set_error_invalid(void *error, const char *function) {
-  ssh_set_error(error, SSH_FATAL, "Invalid argument in %s", function);
+void _ssh_set_error_invalid(void *error, const char *function)
+{
+    _ssh_set_error(error, SSH_FATAL, function,
+                   "Invalid argument in %s", function);
 }
 
 /**
  * @brief Retrieve the error text message from the last error.
  *
- * @param  error        The SSH session pointer.
+ * @param  error        An ssh_session or ssh_bind.
  *
  * @return A static string describing the error.
  */
@@ -103,7 +117,7 @@ const char *ssh_get_error(void *error) {
 /**
  * @brief Retrieve the error code from the last error.
  *
- * @param  error        The SSH session pointer.
+ * @param  error        An ssh_session or ssh_bind.
  *
  * \return SSH_NO_ERROR       No error occurred\n
  *         SSH_REQUEST_DENIED The last request was denied but situation is
