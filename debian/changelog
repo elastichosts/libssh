@@ -1,5 +1,6 @@
 libssh (0.5.4-3) UNRELEASED; urgency=low
 
+  [ Mike Gabriel ]
   * debian/rules:
     + Add get-orig-source rule.
   * debian/watch:
@@ -7,7 +8,11 @@ libssh (0.5.4-3) UNRELEASED; urgency=low
   * debian/copyright.in:
     + Ship auto-generated copyright file in debian/ folder.
 
- -- Mike Gabriel <sunweaver@debian.org>  Wed, 19 Feb 2014 08:39:36 +0100
+  [ Laurent Bigonville ]
+  * debian/patches/0007-security-fix-for-vulnerability-CVE-2014-0017.patch:
+    Reset the PRNG state after acception a new connection (CVE-2014-0017)
+
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 05 Mar 2014 22:08:35 +0100
 
 libssh (0.5.4-2) unstable; urgency=low
 
