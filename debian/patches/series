@@ -1,3 +1,4 @@
 0001-disable-latex-documentation.patch
 0002-fix-html-doc-generation.patch
 0003-fix-typo.patch
+0004-security-fix-for-vulnerability-CVE-2014-0017.patch

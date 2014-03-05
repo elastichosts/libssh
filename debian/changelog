@@ -1,3 +1,10 @@
+libssh (0.5.4-1+deb7u1) UNRELEASED; urgency=medium
+
+  * debian/patches/0004-security-fix-for-vulnerability-CVE-2014-0017.patch:
+    Reset the PRNG state after accepting a new connection (CVE-2014-0017)
+
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 05 Mar 2014 23:10:59 +0100
+
 libssh (0.5.4-1) unstable; urgency=low
 
   * New upstream security release
