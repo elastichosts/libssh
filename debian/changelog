@@ -1,4 +1,4 @@
-libssh (0.5.4-3) UNRELEASED; urgency=low
+libssh (0.5.4-3) unstable; urgency=high
 
   [ Mike Gabriel ]
   * debian/rules:
@@ -12,7 +12,7 @@ libssh (0.5.4-3) UNRELEASED; urgency=low
   * debian/patches/0007-security-fix-for-vulnerability-CVE-2014-0017.patch:
     Reset the PRNG state after acception a new connection (CVE-2014-0017)
 
- -- Laurent Bigonville <bigon@debian.org>  Wed, 05 Mar 2014 22:08:35 +0100
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 05 Mar 2014 22:42:19 +0100
 
 libssh (0.5.4-2) unstable; urgency=low
 
