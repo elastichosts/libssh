@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Laurent Bigonville <bigon@debian.org>
 Uploaders:
  Mike Gabriel <sunweaver@debian.org>,
-Build-Depends: cdbs (>= 0.4.93~), debhelper (>= 8.1.3~), cmake (>= 2.6), libssl-dev, libz-dev
+Build-Depends: cdbs (>= 0.4.93~), debhelper (>= 8.1.3~), cmake (>= 2.6), libssl-dev, libz-dev, libcmocka-dev
 Build-Depends-Indep: doxygen
 Standards-Version: 3.9.5
 Vcs-Git: git://anonscm.debian.org/collab-maint/libssh.git
