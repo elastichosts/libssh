@@ -4,7 +4,7 @@ Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/libssh/+bug/821437
 
 --- a/doc/doxy.config.in
 +++ b/doc/doxy.config.in
-@@ -631,8 +631,7 @@
+@@ -720,8 +720,7 @@
  
  EXCLUDE_PATTERNS       = */.git/* \
                           */.svn/* \

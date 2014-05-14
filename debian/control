@@ -6,7 +6,7 @@ Uploaders:
  Mike Gabriel <sunweaver@debian.org>,
 Build-Depends: cdbs (>= 0.4.93~), debhelper (>= 8.1.3~), cmake (>= 2.6), libssl-dev, libz-dev
 Build-Depends-Indep: doxygen
-Standards-Version: 3.9.2
+Standards-Version: 3.9.5
 Vcs-Git: git://anonscm.debian.org/collab-maint/libssh.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/libssh.git
 Homepage: http://www.libssh.org/
