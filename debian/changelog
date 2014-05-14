@@ -1,3 +1,11 @@
+libssh (0.6.3-2) unstable; urgency=low
+
+  [ Mike Gabriel ]
+  * debian/rules:
+    + Enable tests during package build. (Closes: #744403).
+
+ -- Mike Gabriel <sunweaver@debian.org>  Wed, 14 May 2014 10:19:23 +0200
+
 libssh (0.6.3-1) unstable; urgency=low
 
   * Upload to unstable without changes.
