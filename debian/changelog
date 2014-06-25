@@ -1,3 +1,9 @@
+libssh (0.7.0+g59a1799-1+squeeze) oldstable; urgency=high
+
+  * Upstream revision bump to git commit @59a1799
+
+ -- Alin Dobre <alin.dobre@elastichosts.com>  Wed, 18 Jun 2014 02:40:18 +0000
+
 libssh (0.4.5-3+squeeze2) squeeze-security; urgency=high
 
   * Old-stable security update: Reset the PRNG state after accepting a new
